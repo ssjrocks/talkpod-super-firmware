@@ -12,33 +12,26 @@ BIN = $(CP) -O binary -S
 BUILD = build
 
 # ── sources ───────────────────────────────────────────────────
+LIB = lib/gd32f3x0
 C_SOURCES = \
   src/main.c \
   src/system.c \
-  src/gpio.c \
   src/debug.c \
-  src/interrupts.c \
   src/progmode.c \
-  drivers/st7735s.c \
-  sdk/CMSIS/GD32F30x/Source/system_gd32f30x.c \
-  sdk/Peripheral/Source/gd32f30x_gpio.c \
-  sdk/Peripheral/Source/gd32f30x_rcu.c \
-  sdk/Peripheral/Source/gd32f30x_spi.c \
-  sdk/Peripheral/Source/gd32f30x_misc.c \
-  sdk/Peripheral/Source/gd32f30x_dma.c \
-  sdk/Peripheral/Source/gd32f30x_usart.c \
-  sdk/Peripheral/Source/gd32f30x_timer.c \
-  sdk/Peripheral/Source/gd32f30x_adc.c \
-  sdk/Peripheral/Source/gd32f30x_fmc.c \
-  sdk/Peripheral/Source/gd32f30x_exti.c
+  src/fault.c \
+  drivers/lcd.c \
+  $(LIB)/Peripheral/Source/gd32f3x0_rcu.c \
+  $(LIB)/Peripheral/Source/gd32f3x0_gpio.c \
+  $(LIB)/Peripheral/Source/gd32f3x0_spi.c \
+  $(LIB)/Peripheral/Source/gd32f3x0_misc.c
 
-ASM_SOURCES = sdk/CMSIS/GD32F30x/Source/GCC/startup_gd32f30x_hd.S
+ASM_SOURCES = startup/startup_a36.S
 
 # ── includes ──────────────────────────────────────────────────
 C_INCLUDES = \
-  -Isdk/CMSIS \
-  -Isdk/CMSIS/GD32F30x/Include \
-  -Isdk/Peripheral/Include \
+  -I$(LIB)/CMSIS \
+  -I$(LIB)/CMSIS/GD/GD32F3x0/Include \
+  -I$(LIB)/Peripheral/Include \
   -Isrc \
   -Idrivers
 
@@ -46,20 +39,23 @@ C_INCLUDES = \
 # Cortex-M4 WITHOUT FPU (MVFR0 = 0 on the radio): software floating point only
 CPU = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft
 
-C_DEFS = -DUSE_STDPERIPH_DRIVER -DGD32F30X_HD
+C_DEFS = -DGD32F350 -DUSE_STDPERIPH_DRIVER
 
-CFLAGS  = $(CPU) $(C_DEFS) $(C_INCLUDES) -Os -Wall
+CFLAGS  = $(CPU) $(C_DEFS) $(C_INCLUDES) -Os -Wall -Wextra -Wno-unused-parameter
 CFLAGS += -fdata-sections -ffunction-sections
 CFLAGS += -g -gdwarf-2
 CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 CFLAGS += -std=c11
 
-ASFLAGS = $(CPU) $(C_DEFS) -Wall -fdata-sections -ffunction-sections
+ASFLAGS = $(CPU) $(C_DEFS) -Wall
 
 LDSCRIPT = link.ld
-LDFLAGS  = $(CPU) -specs=nosys.specs -T$(LDSCRIPT)
+LDFLAGS  = $(CPU) --specs=nano.specs --specs=nosys.specs -T$(LDSCRIPT)
 LDFLAGS += -Wl,-Map=$(BUILD)/$(TARGET).map,--cref -Wl,--gc-sections
 LIBS     = -lc -lm -lnosys
+
+# The bootloader occupies the first 1 KB of the 64 KB flash: images must fit in 63 KB.
+MAX_IMAGE = 64512
 
 # ── objects ───────────────────────────────────────────────────
 OBJECTS  = $(addprefix $(BUILD)/,$(notdir $(C_SOURCES:.c=.o)))
@@ -83,6 +79,8 @@ $(BUILD)/$(TARGET).elf: $(OBJECTS) Makefile
 
 $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
 	$(BIN) $< $@
+	@size=$$(wc -c < $@); echo "Image: $$size of $(MAX_IMAGE) bytes ($$(( size * 100 / $(MAX_IMAGE) ))%)"; \
+	  if [ $$size -gt $(MAX_IMAGE) ]; then echo "ERROR: image too big for the 63 KB app area"; rm -f $@; exit 1; fi
 
 # ── .kdhx encryption ─────────────────────────────────────────
 $(BUILD)/encrypt: tools/encrypt.c | $(BUILD)
@@ -96,7 +94,7 @@ $(BUILD)/$(TARGET).kdhx: $(BUILD)/$(TARGET).bin $(BUILD)/encrypt
 
 # ── flash via talkpod-manager ─────────────────────────────────
 flash: $(BUILD)/$(TARGET).kdhx
-	talkpod-firmware flash $<
+	talkpod-firmware flash --yes $<
 
 $(BUILD):
 	mkdir -p $@

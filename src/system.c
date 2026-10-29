@@ -1,16 +1,12 @@
-#include "gd32f30x.h"
+#include "board.h"
 #include "system.h"
 #include "progmode.h"
-
-#define BOOT_CLOCK 48000000U
 
 static volatile uint32_t ticks;
 
 void systick_init(void)
 {
-    SystemCoreClock = BOOT_CLOCK;
-    if (SysTick_Config(SystemCoreClock / 1000U))
-        while (1);
+    SysTick_Config(CPU_HZ / 1000U);          /* 1 ms */
     NVIC_SetPriority(SysTick_IRQn, 0x0FU);
 }
 
