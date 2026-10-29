@@ -2,8 +2,11 @@
 """Run the firmware in Unicorn: simulated keys, serial output, and a PNG of what it draws on the LCD.
 
 usage: emu.py build/a36se-fw.elf [--ms 3000] [--keys 200:UP:100,400:5:900,1800:PTT:300] [--png lcd.png]
+              [--bk] [--bkreg 0x67=0x50] [--switch-off-at MS]
 
---keys is a list of start_ms:KEY:duration_ms (KEY as in drivers/keypad.c key_name()). Time is
+--keys is a list of start_ms:KEY:duration_ms (KEY as in drivers/keypad.c key_name()). The BK4819
+is modelled on its bit-banged pins (writes are stored, reads answered from them or --bkreg); --bk
+logs every register access. The power switch (PF7) reads on until --switch-off-at. Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -20,7 +23,7 @@ from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_SP, UC_CPU_ARM_CORTEX_M4
 
 INSN_PER_MS = 24000
 X_OFFSET = 32                      # drivers/lcd.c
-GPIOA, GPIOB = 0x48000000, 0x48000400
+GPIOA, GPIOB, GPIOC, GPIOF = 0x48000000, 0x48000400, 0x48000800, 0x48001400
 SPI1 = 0x40003800
 USART0 = 0x40013800                # older layout on this MCU: STAT +0, DATA +4
 
@@ -62,6 +65,9 @@ def main():
     ap.add_argument("--ms", type=int, default=3000)
     ap.add_argument("--keys", default="")
     ap.add_argument("--png")
+    ap.add_argument("--bk", action="store_true")
+    ap.add_argument("--bkreg", action="append", default=[])
+    ap.add_argument("--switch-off-at", type=int, default=10**9)
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
@@ -80,7 +86,10 @@ def main():
     uc.mem_write(0x08000400, image)
 
     st = {"n": 0, "ms": 0, "octl": {GPIOA: 0, GPIOB: 0}, "cmd": None, "params": [], "win": [0, 0, 0, 0],
-          "cx": 0, "cy": 0, "hi": None}
+          "cx": 0, "cy": 0, "hi": None, "bk": None}
+    st["octl"].update({GPIOC: 0, GPIOF: 0})
+    bkregs = {int(k, 0): int(v, 0) for k, v in (r.split("=") for r in args.bkreg)}
+    bklog = []
     gram = [0] * (162 * 162)
     serial = bytearray()
     log = []
@@ -114,8 +123,49 @@ def main():
                     if r in rows_low:
                         v &= ~(1 << COL_PINS[c])
             uc.mem_write(addr, struct.pack("<I", v))
-        elif addr == GPIOA + 0x10:                                 # ISTAT: PTT on PA10
-            uc.mem_write(addr, struct.pack("<I", 0xFFFF & ~(1 << 10 if "PTT" in pressed() else 0)))
+        elif addr == GPIOA + 0x10:                                 # ISTAT: PTT on PA10, BK4819 SDA PA3
+            v = 0xFFFF & ~(1 << 10 if "PTT" in pressed() else 0)
+            bk = st["bk"]
+            if bk and bk["n"] >= 8 and bk["read"] and not bit_of(bkregs.get(bk["reg"], 0), 15 - bk["rd_n"]):
+                v &= ~(1 << 3)
+            uc.mem_write(addr, struct.pack("<I", v))
+        elif addr == GPIOF + 0x10:                                 # ISTAT: power switch PF7, high = off
+            uc.mem_write(addr, struct.pack("<I", 0xFFFF if st["ms"] >= args.switch_off_at else 0xFF7F))
+        elif addr in (GPIOC + 0x10,):
+            uc.mem_write(addr, struct.pack("<I", 0xFFFF))
+
+    def bit_of(v, n):
+        return (v >> n) & 1
+
+    def bk_pins(before_a, before_c):
+        """BK4819 frame decoder: CS = PC13, SCK = PA2, SDA = PA3; act on SCK rising edges."""
+        a, c = st["octl"][GPIOA], st["octl"][GPIOC]
+        cs_now, cs_was = (c >> 13) & 1, (before_c >> 13) & 1
+        if cs_was and not cs_now:
+            st["bk"] = {"n": 0, "v": 0, "read": False, "reg": 0, "rd_n": -1}
+        elif cs_now and not cs_was and st["bk"]:
+            bk = st["bk"]
+            if bk["n"] == 24 and not bk["read"]:
+                val = bk["v"] & 0xFFFF
+                bkregs[bk["reg"]] = val
+                bklog.append((st["ms"], "W", bk["reg"], val))
+            elif bk["read"]:
+                bklog.append((st["ms"], "R", bk["reg"], bkregs.get(bk["reg"], 0)))
+            st["bk"] = None
+        bk = st["bk"]
+        if bk is None or cs_now:
+            return
+        if (a >> 2) & 1 and not (before_a >> 2) & 1:               # SCK rising
+            if bk["n"] < 8 or not bk["read"]:
+                bk["v"] = (bk["v"] << 1) | ((a >> 3) & 1)
+                bk["n"] += 1
+                if bk["n"] == 8:
+                    bk["read"] = bool(bk["v"] & 0x80)
+                    bk["reg"] = bk["v"] & 0x7F
+                    bk["v"] = 0
+            else:
+                bk["rd_n"] += 1
+                bk["n"] += 1
 
     def lcd_byte(b):
         o = st["octl"][GPIOB]
@@ -155,13 +205,19 @@ def main():
             if value & 0xFF == 0x0A:
                 log.append((st["ms"], serial.decode("latin-1").rstrip()))
                 serial.clear()
-        elif addr in (GPIOA + 0x18, GPIOB + 0x18):                 # BOP
+        elif (addr & 0xFFF) in (0x018, 0x418, 0x818, 0x1418) and (addr & ~0x3FF) in st["octl"]:   # BOP
             port = addr - 0x18
+            ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][port] = (st["octl"][port] | (value & 0xFFFF)) & ~(value >> 16)
-        elif addr in (GPIOA + 0x28, GPIOB + 0x28):                 # BC
+            bk_pins(ba, bc)
+        elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x28:                         # BC
+            ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x28] &= ~(value & 0xFFFF)
-        elif addr in (GPIOA + 0x14, GPIOB + 0x14):                 # OCTL
+            bk_pins(ba, bc)
+        elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x14:                         # OCTL
+            ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x14] = value & 0xFFFF
+            bk_pins(ba, bc)
         elif addr == SPI1 + 0x0C:
             lcd_byte(value & 0xFF)
 
@@ -177,8 +233,12 @@ def main():
         print(f"!! CPU error {e} at {uc.reg_read(UC_ARM_REG_PC):#x}")
     if serial:
         log.append((st["ms"], serial.decode("latin-1")))
+    if args.bk:
+        for ms, kind, reg, val in bklog:
+            print(f"{ms:6d} ms  BK {kind} 0x{reg:02X} {'=' if kind == 'W' else '->'} 0x{val:04X}")
     for ms, line in log:
         print(f"{ms:6d} ms  {line}")
+    print(f"BK4819: {sum(1 for x in bklog if x[1] == 'W')} writes, {sum(1 for x in bklog if x[1] == 'R')} reads")
     print(f"ran ~{st['n']} instructions, {st['ms']} simulated ms")
     if args.png:
         visible = [gram[y * 162 + x + X_OFFSET] for y in range(128) for x in range(128)]

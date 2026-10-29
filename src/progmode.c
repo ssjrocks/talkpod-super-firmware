@@ -31,15 +31,6 @@ static void leave(void)
     debug_mute(0);
 }
 
-static void system_reset(void)
-{
-    debug_flush();
-    __asm volatile ("dsb");
-    *(volatile uint32_t *)0xE000ED0CU = 0x05FA0004U | (*(volatile uint32_t *)0xE000ED0CU & 0x700U);
-    __asm volatile ("dsb");
-    for (;;) {}
-}
-
 void progmode_poll(void)
 {
     int c;

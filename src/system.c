@@ -1,6 +1,7 @@
 #include "board.h"
 #include "system.h"
 #include "progmode.h"
+#include "debug.h"
 
 static volatile uint32_t ticks;
 
@@ -32,4 +33,13 @@ void delay_ms(uint32_t ms)
 void fwdgt_feed(void)
 {
     FWDGT_CTL = 0x0000AAAAU;
+}
+
+void system_reset(void)
+{
+    debug_flush();
+    __asm volatile ("dsb");
+    *(volatile uint32_t *)0xE000ED0CU = 0x05FA0004U | (*(volatile uint32_t *)0xE000ED0CU & 0x700U);
+    __asm volatile ("dsb");
+    for (;;) {}
 }

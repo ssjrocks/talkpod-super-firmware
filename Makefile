@@ -21,6 +21,8 @@ C_SOURCES = \
   src/fault.c \
   drivers/lcd.c \
   drivers/keypad.c \
+  drivers/bk4819.c \
+  src/board.c \
   gfx/gfx.c \
   gfx/font_6x10.c \
   gfx/font_10x20.c \

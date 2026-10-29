@@ -51,11 +51,28 @@
 #define PTT_PORT        GPIOA
 #define PTT_PIN         GPIO_PIN_10     /* also USART0 RX */
 
+/* RF path switches, LEDs, power: see docs/stock-firmware.md (from the stock firmware) */
+#define RF_PB_PORT      GPIOB
+#define RF_PB0_PIN      GPIO_PIN_0
+#define RF_PB1_PIN      GPIO_PIN_1
+#define RF_PC_PORT      GPIOC
+#define RF_PC14_PIN     GPIO_PIN_14
+#define RF_PC15_PIN     GPIO_PIN_15
+#define LED_PORT        GPIOA
+#define LED_RED_PIN     GPIO_PIN_13     /* TX (assumed: the other one lights on RX) */
+#define LED_GREEN_PIN   GPIO_PIN_14     /* lit by stock when a signal opens the squelch */
+#define POWER_HOLD_PORT GPIOA
+#define POWER_HOLD_PIN  GPIO_PIN_15     /* high keeps the radio powered */
+#define POWER_SENSE_PORT GPIOF
+#define POWER_SENSE_PIN GPIO_PIN_7      /* high = power switch turned off */
+
 /* Misc */
 #define BATTERY_PORT    GPIOA
 #define BATTERY_PIN     GPIO_PIN_1      /* ADC */
 #define MIC_EN_PORT     GPIOA
 #define MIC_EN_PIN      GPIO_PIN_12
+#define AUX_PA8_PIN     GPIO_PIN_8      /* stock: set with the BK1080 (FM broadcast) */
+#define AUX_PA11_PIN    GPIO_PIN_11     /* stock: set when a voice prompt plays */
 
 /* External flash map (stock layout, from Jamie793) */
 #define EXT_FLASH_CHANNELS_ADDR 0x000000
@@ -65,5 +82,13 @@
 
 /* Clocks: the bootloader leaves the PLL at 48 MHz (HXTAL 8 MHz / 2 x 12), AHB = APB1 = APB2. */
 #define CPU_HZ          48000000U
+
+/* src/board.c */
+enum { RF_OFF, RF_RX };
+void board_init(void);
+int  board_hwver2(void);                    /* bootloader tag "HWVER02" at 0x08000300 */
+void board_rf_path(uint32_t freq_10hz, int mode);
+void board_led(int red, int green);
+void board_power_poll(void);                /* every 10 ms: powers off when the switch is off */
 
 #endif
