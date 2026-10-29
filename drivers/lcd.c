@@ -15,8 +15,9 @@
 #define CMD_MADCTL  0x36
 #define CMD_COLMOD  0x3A
 
-/* Panel offsets inside the controller's 132 x 162 RAM. Adjust after seeing the test pattern. */
-#define X_OFFSET 0
+/* Panel offsets inside the controller's 132 x 162 RAM. The stock firmware adds 32 to every column
+   (its window function at 0x0800E200) and nothing to rows; the v0.3 test pattern confirmed it. */
+#define X_OFFSET 32
 #define Y_OFFSET 0
 #define MADCTL   0xA8   /* Jamie's value: MY + MV + BGR */
 

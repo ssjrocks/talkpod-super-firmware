@@ -7,7 +7,7 @@
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.3";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.4";
 
 /* Test pattern: 1-pixel white border (a missing or doubled edge shows a panel offset), a red
    square in the top-left corner and a blue one bottom-right (orientation), eight colour bars
@@ -39,7 +39,7 @@ static void test_pattern(void)
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.3 ===\r\n");
+    debug_puts("\r\n=== A36SE FW v0.4 ===\r\n");
 
     systick_init();
     __enable_irq();                 /* the startup code left interrupts masked */
