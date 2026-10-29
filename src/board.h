@@ -1,5 +1,6 @@
-/* Talkpod A36SE / A36plus 5 W board: pins (GD32F3x0-family MCU, LQFP-48).
- * From Jamie793/A36Plus_Radio Core/Inc/gpio.h and the stock firmware. */
+/* Talkpod A36SE / A36plus 5 W board: pins (Artery AT32F421C8T7, LQFP-48: DBG IDCODE 0x50020100).
+ * The vendored GD32F3x0 library matches it for clocks, GPIO and SPI; its USART does not (see
+ * src/debug.c). From Jamie793/A36Plus_Radio Core/Inc/gpio.h and the stock firmware. */
 #ifndef BOARD_H
 #define BOARD_H
 

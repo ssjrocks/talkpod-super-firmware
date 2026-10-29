@@ -27,6 +27,7 @@ void fault_dump(uint32_t *frame, uint32_t exc_return)
 {
     uint32_t ipsr;
     __asm volatile ("mrs %0, ipsr" : "=r"(ipsr));
+    debug_mute(0);
     debug_puts("\r\n!!! FAULT !!!\r\n");
     line("exception ", ipsr & 0x1FF);       /* 3 = HardFault, 4 MemManage, 5 BusFault, 6 UsageFault, 16+ = IRQ */
     line("pc        ", frame[6]);

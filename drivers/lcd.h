@@ -1,5 +1,5 @@
-#ifndef LCD_H
-#define LCD_H
+#ifndef LCD_DRIVER_H
+#define LCD_DRIVER_H
 
 #include <stdint.h>
 

@@ -12,6 +12,7 @@
 #include <string.h>
 #include "debug.h"
 #include "progmode.h"
+#include "system.h"
 
 static const char MAGIC[] = "PROGRAMJC37U";
 /* Not a stock fingerprint, so CHIRP / Talkpod Manager won't mistake us for stock firmware. */
@@ -20,6 +21,15 @@ static const uint8_t IDENT[8] = {'A', '3', '6', 'C', 'F', 'W', '0', '1'};
 static char window[12];
 static uint8_t in_prog;
 static uint8_t upd_len;
+static uint32_t last_rx;
+
+/* Debug logging stays muted from the handshake until the PC sends 'E' or goes quiet for 1 s. */
+static void leave(void)
+{
+    in_prog = 0;
+    upd_len = 0;
+    debug_mute(0);
+}
 
 static void system_reset(void)
 {
@@ -34,6 +44,7 @@ void progmode_poll(void)
 {
     int c;
     while ((c = debug_getc()) >= 0) {
+        last_rx = millis();
         if (in_prog) {
             if (upd_len) {                          /* collecting "UPDATE" */
                 static const char UPD[] = "UPDATE";
@@ -44,13 +55,12 @@ void progmode_poll(void)
                     }
                     continue;
                 }
-                upd_len = 0;
-                in_prog = 0;
+                leave();
             } else if (c == 'F') {
                 debug_write(IDENT, sizeof IDENT);
                 continue;
             } else if (c == 'E') {
-                in_prog = 0;
+                leave();
                 continue;
             } else if (c == 'U') {
                 upd_len = 1;
@@ -60,9 +70,12 @@ void progmode_poll(void)
         memmove(window, window + 1, sizeof window - 1);
         window[sizeof window - 1] = (char)c;
         if (memcmp(window, MAGIC, sizeof window) == 0) {
+            debug_mute(1);
             debug_putc(0x06);
             in_prog = 1;
             upd_len = 0;
         }
     }
+    if (in_prog && millis() - last_rx > 1000)
+        leave();
 }

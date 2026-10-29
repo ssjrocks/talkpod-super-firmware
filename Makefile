@@ -20,6 +20,10 @@ C_SOURCES = \
   src/progmode.c \
   src/fault.c \
   drivers/lcd.c \
+  drivers/keypad.c \
+  gfx/gfx.c \
+  gfx/font_6x10.c \
+  gfx/font_10x20.c \
   $(LIB)/Peripheral/Source/gd32f3x0_rcu.c \
   $(LIB)/Peripheral/Source/gd32f3x0_gpio.c \
   $(LIB)/Peripheral/Source/gd32f3x0_spi.c \
@@ -33,7 +37,8 @@ C_INCLUDES = \
   -I$(LIB)/CMSIS/GD/GD32F3x0/Include \
   -I$(LIB)/Peripheral/Include \
   -Isrc \
-  -Idrivers
+  -Idrivers \
+  -Igfx
 
 # ── flags ─────────────────────────────────────────────────────
 # Cortex-M4 WITHOUT FPU (MVFR0 = 0 on the radio): software floating point only

@@ -1,9 +1,11 @@
 #include <stdint.h>
 #include "debug.h"
 
-/* USART0 on PA9 (TX) / PA10 (RX, shared with PTT). The bootloader leaves it enabled at 115200 baud
-   for its 48 MHz clock. We switch to 57600 baud, the rate the stock firmware, CHIRP and
-   talkpod-firmware use, and turn off its receive interrupt (we poll). */
+/* USART0 on PA9 (TX) / PA10 (RX, shared with PTT). The AT32F421 USART has the older register
+   layout (STAT, DATA, BAUD, CTL0 at +0, +4, +8, +C), not GD32F3x0's, so it is driven directly. The
+   bootloader leaves it enabled at 115200 baud for its 48 MHz clock. We switch to 57600 baud, the
+   rate the stock firmware, CHIRP and talkpod-firmware use, and turn off its receive interrupt (we
+   poll). */
 
 #define USART0_STAT  (*(volatile uint32_t *)0x40013800U)
 #define USART0_DATA  (*(volatile uint32_t *)0x40013804U)
@@ -14,6 +16,7 @@
 #define STAT_TXE   (1U << 7)
 #define STAT_RBNE  (1U << 5)
 #define STAT_ORERR (1U << 3)
+#define STAT_FERR  (1U << 1)
 #define CTL0_UEN   (1U << 13)
 #define CTL0_RBNEIE (1U << 5)
 
@@ -43,6 +46,8 @@ void debug_flush(void)
     while (!(USART0_STAT & STAT_TC) && --timeout) {}
 }
 
+static volatile uint32_t rx_count;
+
 int debug_getc(void)
 {
     uint32_t st = USART0_STAT;
@@ -50,9 +55,19 @@ int debug_getc(void)
         (void)USART0_DATA;
         return -1;
     }
-    if (st & STAT_RBNE)
-        return (int)(USART0_DATA & 0xFF);
+    if (st & STAT_RBNE) {
+        int c = (int)(USART0_DATA & 0xFF);
+        if (c == 0 && (st & STAT_FERR))
+            return -1;              /* a break: PTT pulls RX low (keypad.c), not a byte */
+        rx_count++;
+        return c;
+    }
     return -1;
+}
+
+uint32_t debug_rx_count(void)
+{
+    return rx_count;
 }
 
 void debug_write(const uint8_t *p, uint32_t n)
@@ -61,8 +76,19 @@ void debug_write(const uint8_t *p, uint32_t n)
         debug_putc((char)*p++);
 }
 
+/* Log output (debug_puts / debug_hex*) is muted while a PC is talking to us in programming mode,
+   so it can't land among the protocol bytes; debug_putc / debug_write always send. */
+static uint8_t muted;
+
+void debug_mute(int on)
+{
+    muted = (uint8_t)on;
+}
+
 void debug_puts(const char *s)
 {
+    if (muted)
+        return;
     while (*s)
         debug_putc(*s++);
 }
@@ -71,12 +97,16 @@ static const char hex_chars[] = "0123456789ABCDEF";
 
 void debug_hex32(uint32_t v)
 {
+    if (muted)
+        return;
     for (int i = 28; i >= 0; i -= 4)
         debug_putc(hex_chars[(v >> i) & 0xF]);
 }
 
 void debug_hex16(uint16_t v)
 {
+    if (muted)
+        return;
     for (int i = 12; i >= 0; i -= 4)
         debug_putc(hex_chars[(v >> i) & 0xF]);
 }

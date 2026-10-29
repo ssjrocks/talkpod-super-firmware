@@ -1,4 +1,4 @@
-/* Startup for the A36SE / A36plus (GD32F3x0-family MCU) running after the radio's bootloader.
+/* Startup for the A36SE / A36plus (Artery AT32F421 MCU) running after the radio's bootloader.
  *
  * Generated from GigaDevice's GNU startup_gd32f3x0.s vector table; the reset logic is ours:
  *  - the bootloader jumps here with interrupts it enabled (e.g. USART0) possibly still enabled
