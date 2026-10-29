@@ -5,7 +5,7 @@
 
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.1.0";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.2";
 
 /* AHB GPIO registers — the actual hardware on this chip */
 #define GPIOB_AHB_BASE  0x48000400U
@@ -33,9 +33,17 @@ int main(void)
 
     fwdgt_feed();
 
-    debug_init();
-    debug_puts("\r\n=== A36SE FW v0.1.0 ===\r\n");
+    debug_init(57600);
+    debug_puts("\r\n=== A36SE FW v0.2 ===\r\n");
     debug_puts("Clock: 48 MHz (bootloader)\r\n");
+
+    /* Which chip is this? (read-only information registers) */
+    debug_puts("DENSITY:  "); debug_hex32(*(volatile uint32_t *)0x1FFFF7E0U);   /* [15:0] flash KB, [31:16] SRAM KB */
+    debug_puts("\r\nDBG_ID:   "); debug_hex32(*(volatile uint32_t *)0xE0042000U);
+    debug_puts("\r\nCPUID:    "); debug_hex32(*(volatile uint32_t *)0xE000ED00U);
+    debug_puts("\r\nMVFR0:    "); debug_hex32(*(volatile uint32_t *)0xE000EF40U);  /* nonzero = FPU present */
+    debug_puts("\r\nUID:      "); debug_hex32(*(volatile uint32_t *)0x1FFFF7ACU);
+    debug_puts("\r\n");
 
     debug_puts("RCU_CTL:  ");
     debug_hex32(RCU_CTL);
@@ -47,7 +55,8 @@ int main(void)
 
     fwdgt_feed();
     systick_init();
-    debug_puts("SysTick OK\r\n");
+    __enable_irq();                 /* the startup code left interrupts masked */
+    debug_puts("SysTick OK, interrupts on\r\n");
 
     uint32_t count = 0;
     while (1) {

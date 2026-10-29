@@ -1,5 +1,6 @@
 #include "gd32f30x.h"
 #include "system.h"
+#include "progmode.h"
 
 #define BOOT_CLOCK 48000000U
 
@@ -26,8 +27,10 @@ uint32_t millis(void)
 void delay_ms(uint32_t ms)
 {
     uint32_t t0 = ticks;
-    while ((ticks - t0) < ms)
-        __WFI();
+    while ((ticks - t0) < ms) {
+        progmode_poll();          /* keep answering the flasher while we wait */
+        fwdgt_feed();
+    }
 }
 
 void fwdgt_feed(void)

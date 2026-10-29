@@ -23,7 +23,24 @@ defined in linker script */
   .type  Reset_Handler, %function
 Reset_Handler:
 
-/* Feed watchdog — bootloader leaves FWDGT running */
+/* The bootloader may jump here with interrupts enabled in the NVIC (e.g. USART0) and/or masked
+   globally. Mask everything, then disable and clear every NVIC interrupt and stop SysTick, so
+   nothing fires into our vector table before main() sets things up and calls __enable_irq(). */
+  cpsid i
+  ldr  r0, =0xE000E180          /* NVIC ICER0..2 */
+  mvn  r1, #0
+  str  r1, [r0]
+  str  r1, [r0, #4]
+  str  r1, [r0, #8]
+  ldr  r0, =0xE000E280          /* NVIC ICPR0..2 */
+  str  r1, [r0]
+  str  r1, [r0, #4]
+  str  r1, [r0, #8]
+  ldr  r0, =0xE000E010          /* SysTick CSR */
+  movs r1, #0
+  str  r1, [r0]
+
+/* Feed the watchdog in case it's running (measured: the bootloader doesn't start it) */
   ldr  r0, =0x40003000
   ldr  r1, =0x0000AAAA
   str  r1, [r0]
@@ -66,16 +83,7 @@ LoopFillZerobss:
    SystemInit would disable PLL/HXTAL and switch to 8 MHz IRC8M,
    breaking the working USART config and requiring re-init. */
 
-/* Enable FPU (CP10 + CP11 full access) */
-  ldr  r0, =0xE000ED88
-  ldr  r1, [r0]
-  orr  r1, r1, #(0xF << 20)
-  str  r1, [r0]
-  dsb
-  isb
-
-/* Call into static constructors (C++) */
-  bl __libc_init_array
+/* No FPU on this chip (MVFR0 reads 0), and no C++ constructors to run. */
 /* Call the application's entry point.*/
   bl  main
   bx  lr    

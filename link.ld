@@ -2,7 +2,11 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM);    /* end of RAM */
+/* Initial stack pointer. NOT the end of RAM (0x20004000): the radio's bootloader only jumps to
+   firmware whose first vector-table word passes its stack-pointer sanity check, and both
+   working images (stock and tests/bare_*) use 0x20003E48, while 0x20004000 and 0x2000C000
+   never started. Keep this below 0x20004000. */
+_estack = 0x20003E48;
 /* Generate a link error if heap and stack don't fit into RAM */
 _Min_Heap_Size = 0x200;      /* required amount of heap  */
 _Min_Stack_Size = 0x400; /* required amount of stack */

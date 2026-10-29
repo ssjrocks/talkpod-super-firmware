@@ -18,6 +18,7 @@ C_SOURCES = \
   src/gpio.c \
   src/debug.c \
   src/interrupts.c \
+  src/progmode.c \
   drivers/st7735s.c \
   sdk/CMSIS/GD32F30x/Source/system_gd32f30x.c \
   sdk/Peripheral/Source/gd32f30x_gpio.c \
@@ -42,7 +43,8 @@ C_INCLUDES = \
   -Idrivers
 
 # ── flags ─────────────────────────────────────────────────────
-CPU = -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
+# Cortex-M4 WITHOUT FPU (MVFR0 = 0 on the radio): software floating point only
+CPU = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft
 
 C_DEFS = -DUSE_STDPERIPH_DRIVER -DGD32F30X_HD
 
