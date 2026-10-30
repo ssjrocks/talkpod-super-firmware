@@ -14,8 +14,8 @@ _Min_Stack_Size = 0x400; /* required amount of stack */
 /* Specify the memory areas */
 MEMORY
 {
-  RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 16K
-  FLASH (rx)      : ORIGIN = 0x8000400, LENGTH = 255K
+  RAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 0x3E48   /* up to _estack */
+  FLASH (rx)      : ORIGIN = 0x8000400, LENGTH = 63K      /* 64 KB less the bootloader */
 }
 
 /* Define output sections */
