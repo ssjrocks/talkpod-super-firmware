@@ -142,7 +142,23 @@ prompts; index at 0x10FF80), 0x190000-0x191FFF used, 0x192000-0x1EFFFF erased, 0
 used, rest erased. Stock can erase 4 KB / 32 KB / 64 KB / the whole chip (0x800b88c, 0x800b780,
 0x800b7de, 0x800b844) and program pages (0x800ba24); its addresses are computed at run time.
 
-This firmware writes only to 0x1A0000-0x1EFFFF (drivers/spiflash.h refuses anything else):
-0x1A0000-0x1DFFFF boot splash, 0x1E0000 settings (32-byte records, newest valid wins).
+This firmware writes only to 0x110000-0x1EFFFF (drivers/spiflash.h refuses anything else):
+0x110000 sound pack, 0x120000-0x1DFFFF boot splash, 0x1E0000 settings (32-byte records, newest
+valid wins). 0x110000-0x191FFF was the stock voice area (see Voice prompts).
 The backup is in backups/ (not in git) and can be restored with a stock-firmware tool or a future
 restore command.
+
+## Voice prompts
+
+Index at flash 0x110000: (u32 length, u32 offset) pairs, audio at offset + 0x90000, 143 prompts
+(stock numbers 16-158; Super 1.22's table base 0x10FF80 counts from 16): 16-77 Mandarin, 78-148
+English ("0".."100", "welcome", menu item names, "high", "low", "11".."19"), 149-158 beeps.
+Factory data is standard IMA ADPCM (89 steps, 16-bit predictor), **high nibble first**; Super
+1.22's decoder (0x800d4f0) clamps the index to 58 and the predictor to 12 bits, which clips this
+data. Played as PWM on PA11 (TMR1 channel 4, AF2): Super uses period 2201 at 108 MHz with a
+repetition count of 5 and DMA from the update event into C4DT, 8178 samples/s.
+tools/extract_voice.py writes them as WAV files.
+
+On 2026-10-30 the voice area 0x110000-0x191FFF was erased at the user's request and replaced by
+this firmware's sound pack (tools/soundpack.py: ten sounds, 27.9 KB). All prompts are in the
+2 MB backup; stock firmware will have no voice prompts unless the backup is restored.

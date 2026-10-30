@@ -4,6 +4,10 @@
  *   x ADDR LEN    hex dump of the external flash (hex address, decimal length up to 256)
  *   X ADDR LEN    raw flash bytes (hex address, decimal length up to 65536), then their
  *                 CRC-16/XMODEM, big-endian (tools/flash_backup.py)
+ *   E ADDR        erase the 4 KB sector at ADDR (hex); only in the firmware's own region
+ *   W ADDR LEN    then LEN raw bytes (up to 256) and their CRC-16/XMODEM (big-endian): write them
+ *                 at ADDR (hex) into erased flash; only in the firmware's own region
+ *   P ID          play sound ID from the sound pack (tools/soundpack.py)
  *   d             dump the main BK4819 registers and GPIO outputs
  *   f HZ          tune the selected slot (as VFO) to HZ
  *   s L           squelch level L (0-9)
@@ -23,13 +27,24 @@
 #include "spiflash.h"
 #include "system.h"
 #include "ui.h"
+#include "voice.h"
 #include "watch.h"
 
 static char line[32];
 static volatile uint8_t line_len, line_ready;
 
+/* 'W' receives raw bytes after its command line */
+static uint8_t bin[256 + 2];
+static volatile uint16_t bin_len, bin_have;
+static uint32_t bin_addr, bin_since;
+
 void shell_input(char c)
 {
+    if (bin_len) {
+        if (bin_have < bin_len)
+            bin[bin_have++] = (uint8_t)c;
+        return;
+    }
     if (line_ready)
         return;
     if (c == '\r' || c == '\n') {
@@ -171,8 +186,27 @@ static void survey(const char *p)
     restore();
 }
 
+static void bin_poll(void)
+{
+    if (bin_have == bin_len) {
+        uint16_t n = (uint16_t)(bin_len - 2);
+        if (crc16(0, bin, n) != (bin[n] << 8 | bin[n + 1]))
+            debug_puts("crc\r\n");
+        else
+            debug_puts(spiflash_write(bin_addr, bin, n) ? "ok\r\n" : "refused\r\n");
+        bin_len = 0;
+    } else if (millis() - bin_since > 2000) {
+        debug_puts("timeout\r\n");
+        bin_len = 0;
+    }
+}
+
 void shell_poll(void)
 {
+    if (bin_len) {
+        bin_poll();
+        return;
+    }
     if (!line_ready)
         return;
     const char *p = line + 1;
@@ -226,6 +260,24 @@ void shell_poll(void)
         debug_putc((char)crc);
         break;
     }
+    case 'E':
+        debug_puts(spiflash_erase(parse_num(&p, 16)) ? "ok\r\n" : "refused\r\n");
+        break;
+    case 'W': {
+        uint32_t addr = parse_num(&p, 16), len = parse_num(&p, 10);
+        if (len == 0 || len > 256) {
+            debug_puts("1-256 bytes\r\n");
+            break;
+        }
+        bin_addr = addr;
+        bin_have = 0;
+        bin_since = millis();
+        bin_len = (uint16_t)(len + 2);
+        break;
+    }
+    case 'P':
+        debug_puts(voice_play((int)parse_num(&p, 10)) ? "ok\r\n" : "no such sound\r\n");
+        break;
     case 'd': {
         static const uint8_t regs[] = {0x0C, 0x30, 0x33, 0x37, 0x43, 0x47, 0x48, 0x4F, 0x65, 0x67,
                                        0x70, 0x78, 0x7E};
@@ -262,11 +314,12 @@ void shell_poll(void)
         uint32_t hz = parse_num(&p, 10);
         if (hz) {
             watch_pause(1);
-            board_speaker(1);
+            board_speaker(SPK_TEST, 1);
             bk4819_beep(1, (uint16_t)hz);
             bk4819_write(0x48, 0xB3FF);     /* louder than the stock beep */
         } else {
             bk4819_beep(0, 0);
+            board_speaker(SPK_TEST, 0);
             watch_pause(0);
             restore();
         }
@@ -275,10 +328,11 @@ void shell_poll(void)
     }
     case 'b':
         watch_pause(1);
-        board_speaker(1);
+        board_speaker(SPK_TEST, 1);
         bk4819_beep(1, 1000);
         wait_ms(300);
         bk4819_beep(0, 0);
+        board_speaker(SPK_TEST, 0);
         watch_pause(0);
         restore();
         break;
@@ -289,7 +343,8 @@ void shell_poll(void)
         survey(p);
         break;
     default:
-        debug_puts("r RR | w RR VVVV | x ADDR LEN | d | f HZ | s L | t HZ | b | m HZ N | v LO HI ST N\r\n");
+        debug_puts("r RR | w RR VVVV | x/X ADDR LEN | E ADDR | W ADDR LEN | P ID | d | f HZ | s L | "
+                   "t HZ | b | m HZ N | v LO HI ST N\r\n");
     }
     line_len = 0;
     line_ready = 0;

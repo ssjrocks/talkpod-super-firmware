@@ -72,7 +72,7 @@
 #define MIC_EN_PORT     GPIOA           /* speaker amplifier enable (Jamie793 called it MIC_EN) */
 #define MIC_EN_PIN      GPIO_PIN_12
 #define AUX_PA8_PIN     GPIO_PIN_8      /* stock: set with the BK1080 (FM broadcast) */
-#define AUX_PA11_PIN    GPIO_PIN_11     /* stock: set when a voice prompt plays */
+#define AUX_PA11_PIN    GPIO_PIN_11     /* voice prompt PWM out: TMR1 channel 4, AF2 (src/voice.c) */
 
 /* External flash map (stock layout, from Jamie793) */
 #define EXT_FLASH_CHANNELS_ADDR 0x000000
@@ -89,7 +89,8 @@ void board_init(void);
 int  board_hwver2(void);                    /* bootloader tag "HWVER02" at 0x08000300 */
 void board_rf_path(uint32_t freq_10hz, int mode);
 void board_led(int red, int green);
-void board_speaker(int on);
+enum { SPK_RADIO = 1, SPK_VOICE = 2, SPK_TEST = 4 };
+void board_speaker(int who, int on);
 void board_power_poll(void);                /* every 10 ms: powers off when the switch is off */
 
 #endif

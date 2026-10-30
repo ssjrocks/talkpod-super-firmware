@@ -2,13 +2,15 @@
 """Call one function of the stock firmware in Unicorn and log what it does to the hardware.
 
 usage: call_stock.py STOCK.plain.bin FUNC [r0 [r1 [r2 [r3]]]] [--mem ADDR=HEXBYTES ...] [--bkreg REG=VAL ...]
+                    [--flash BACKUP.bin]
 
 STOCK.plain.bin is a decrypted stock image (loads at 0x08000400). Instead of running the whole
 firmware (it runs on an RTOS, which Unicorn can't schedule), one function is called with the
 given arguments on a zeroed RAM. Logged:
   BK4819 register writes/reads (by intercepting the stock bk4819_write_reg / read_reg),
   BK4819 GPIO changes (register 0x33), MCU GPIO pin set/clear/mode changes, other peripheral writes.
---mem pre-loads RAM (globals the function reads), --bkreg sets what BK4819 register reads return.
+--mem pre-loads RAM (globals the function reads), --bkreg sets what BK4819 register reads return,
+--flash answers the stock SPI flash read (0x800b938: addr, dst, len) from a flash image.
 Delays are skipped. Addresses are for A36Plus-EN-V1.22-Super; see docs/stock-firmware.md.
 """
 import argparse
@@ -22,6 +24,7 @@ from unicorn.arm_const import (UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_A
 
 BK_WRITE, BK_READ = 0x08009C08, 0x08009800
 DELAYS = (0x08002A36, 0x08002A52)            # delay_ms, delay_us
+FLASH_READ = 0x0800B938
 SENTINEL = 0x0800FFF0
 PORTS = {0x48000000: "PA", 0x48000400: "PB", 0x48000800: "PC", 0x48000C00: "PD", 0x48001400: "PF"}
 MODES = {0: "input", 1: "output", 2: "alt", 3: "analog"}
@@ -39,6 +42,7 @@ def main():
     ap.add_argument("--mem", action="append", default=[])
     ap.add_argument("--bkreg", action="append", default=[])
     ap.add_argument("--max", type=int, default=2_000_000)
+    ap.add_argument("--flash")
     a = ap.parse_args()
 
     fw = open(a.image, "rb").read()
@@ -54,6 +58,7 @@ def main():
         addr, data = m.split("=")
         uc.mem_write(int(addr, 0), bytes.fromhex(data))
     bkregs = {int(k, 0): int(v, 0) for k, v in (r.split("=") for r in a.bkreg)}
+    flash = open(a.flash, "rb").read() if a.flash else b""
 
     def ret(uc, value=None):
         if value is not None:
@@ -75,6 +80,11 @@ def main():
             print(f"BK  R 0x{reg:02X} -> 0x{val:04X}")
             ret(uc, val)
         elif addr in DELAYS:
+            ret(uc)
+        elif addr == FLASH_READ and flash:
+            src, dst, n = (uc.reg_read(r) for r in (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2))
+            print(f"FLASH read 0x{src:06X} len {n} -> 0x{dst:08X}")
+            uc.mem_write(dst, flash[src:src + n])
             ret(uc)
 
     def on_bitband(uc, access, addr, size, value, _):

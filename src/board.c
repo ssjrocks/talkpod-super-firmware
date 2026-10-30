@@ -60,10 +60,12 @@ void board_rf_path(uint32_t freq_10hz, int mode)
     }
 }
 
-/* PA12 enables the speaker amplifier (stock 0x800b6e0, reference-counted over its audio sources) */
-void board_speaker(int on)
+/* PA12 enables the speaker amplifier; like stock 0x800b6e0 it stays on while any user wants it */
+void board_speaker(int who, int on)
 {
-    if (on)
+    static uint8_t users;
+    users = (uint8_t)(on ? users | who : users & ~who);
+    if (users)
         gpio_bit_set(MIC_EN_PORT, MIC_EN_PIN);
     else
         gpio_bit_reset(MIC_EN_PORT, MIC_EN_PIN);

@@ -11,7 +11,7 @@ static uint8_t corr_400[16], corr_130[16], corr_200[16], corr_300[16];  /* per-f
 static uint8_t noise[16];                   /* 0xF210: [5 + band] threshold, [9] hysteresis */
 
 static uint32_t freq = 47690000;
-static uint8_t am, narrow, level = 1, monitor, open, muted;
+static uint8_t am, narrow, level = 1, monitor, open, muted, hold;
 
 void radio_init(void)
 {
@@ -92,9 +92,15 @@ static void squelch_regs(uint16_t *reg78, uint16_t *reg4f)
 static void set_open(int on)
 {
     open = (uint8_t)on;
-    bk4819_af(on ? (am ? BK_AF_AM : BK_AF_FM) : BK_AF_MUTE);
-    board_speaker(on);
+    bk4819_af(on && !hold ? (am ? BK_AF_AM : BK_AF_FM) : BK_AF_MUTE);
+    board_speaker(SPK_RADIO, on);
     board_led(0, on);
+}
+
+void radio_audio_hold(int on)
+{
+    hold = (uint8_t)on;
+    set_open(open);
 }
 
 void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)

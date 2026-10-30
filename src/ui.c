@@ -21,6 +21,7 @@
 #include "system.h"
 #include "watch.h"
 #include "settings.h"
+#include "voice.h"
 
 #define C_BG     RGB(8, 10, 18)
 #define C_PANEL  RGB(26, 32, 48)
@@ -46,6 +47,8 @@ static const uint8_t backlight_s[] = {0, 10, 30, 60};       /* 0 = always on */
 static const char *const backlight_names[] = {"Always", "10 s", "30 s", "60 s"};
 
 static uint8_t screen, step = 4, backlight = 2, light_on = 1, locked, searching;
+static uint8_t sounds = 3;              /* 1: key beeps, 2: voice */
+static uint32_t next_battery_warn;
 static uint32_t last_key, toast_until, next_meter, next_status;
 static char toast[24];
 static char entry[8];
@@ -81,6 +84,14 @@ static void show_toast(const char *s)
 {
     strncpy(toast, s, sizeof toast - 1);
     toast_until = millis() + TOAST_MS;
+}
+
+/* key beeps (149, 151, 156) and spoken prompts / the power-on sound each have a setting */
+static void snd(int id)
+{
+    int keyish = id == SND_KEY || id == SND_CANCEL || id == SND_OPEN;
+    if (sounds & (keyish ? 1 : 2))
+        voice_play(id);
 }
 
 static int rssi_level(void)                 /* 0-16 meter segments, -125..-45 dBm */
@@ -261,11 +272,14 @@ static void draw_main(void)
 
 /* ---- menu ---------------------------------------------------------------------------------- */
 
-enum { M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_SCAN, M_ABOUT, M_COUNT };
+enum { M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_KEYBEEP, M_VOICE,
+       M_SCAN, M_ABOUT, M_COUNT };
 static const char *const menu_names[M_COUNT] = {
-    "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "Scan channels", "About",
+    "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "Key beep", "Voice",
+    "Scan channels", "About",
 };
-static uint8_t menu_pos, editing;
+#define MENU_ROWS 8                     /* rows on screen; the list scrolls */
+static uint8_t menu_pos, menu_top, editing;
 
 static void menu_value(int item, char *s)
 {
@@ -278,13 +292,17 @@ static void menu_value(int item, char *s)
     case M_MODULATION: put_str(s, sl->is_channel ? "channel" : sl->vfo_am ? "AM" : "FM"); break;
     case M_DUAL:       put_str(s, watch_dual() ? "On" : "Off"); break;
     case M_BACKLIGHT:  put_str(s, backlight_names[backlight]); break;
+    case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
+    case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
     default: break;
     }
 }
 
 static void draw_menu_row(int i)
 {
-    int y = 16 + i * 13, sel = i == menu_pos;
+    if (i < menu_top || i >= menu_top + MENU_ROWS)
+        return;
+    int y = 16 + (i - menu_top) * 13, sel = i == menu_pos;
     uint16_t bg = sel ? C_PANEL2 : C_BG;
     char v[12];
     if (sel)
@@ -320,7 +338,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.92", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.93", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -443,6 +461,7 @@ static void long_press(int key)
     case KEY_1:
         s->low_power ^= 1;
         show_toast(s->low_power ? "TX power low" : "TX power high");
+        snd(s->low_power ? SND_LOW : SND_HIGH);
         break;
     case KEY_2:
         radio_set_squelch((radio_squelch() + 1) % 10);
@@ -483,6 +502,7 @@ static void long_press(int key)
             s->vfo_narrow = s->narrow;
         }
         watch_update(sel);
+        snd(s->is_channel ? SND_CHANNEL_MODE : SND_FREQUENCY_MODE);
         break;
     case KEY_FM:
         locked ^= 1;
@@ -590,6 +610,7 @@ static void key_main(const key_event_t *ev)
         } else if (!busy) {
             screen = SCR_MENU;
             editing = 0;
+            snd(SND_MENU);
             draw_menu();
         }
         return;
@@ -606,6 +627,7 @@ static void key_main(const key_event_t *ev)
     case KEY_BACK:
         entry_len = 0;
         stop_activity();
+        snd(SND_CANCEL);
         draw_main();
         break;
     case KEY_SIDE2:
@@ -652,6 +674,12 @@ static void menu_change(int dir)
     case M_BACKLIGHT:
         backlight = (uint8_t)((backlight + 4 + dir) % 4);
         break;
+    case M_KEYBEEP:
+        sounds ^= 1;
+        break;
+    case M_VOICE:
+        sounds ^= 2;
+        break;
     default:
         break;
     }
@@ -671,13 +699,23 @@ static void key_menu(const key_event_t *ev)
             draw_menu_row(menu_pos);
         } else {
             menu_pos = (uint8_t)((menu_pos + M_COUNT + dir) % M_COUNT);
-            draw_menu_row(old);
-            draw_menu_row(menu_pos);
-            draw_menu_header();
+            int top = menu_top;
+            if (menu_pos < menu_top)
+                menu_top = menu_pos;
+            if (menu_pos >= menu_top + MENU_ROWS)
+                menu_top = (uint8_t)(menu_pos - MENU_ROWS + 1);
+            if (menu_top != top) {
+                draw_menu();
+            } else {
+                draw_menu_row(old);
+                draw_menu_row(menu_pos);
+                draw_menu_header();
+            }
         }
         break;
     }
     case KEY_MENU:
+        snd(SND_OPEN);
         if (menu_pos == M_SCAN) {
             screen = SCR_MAIN;
             start_scan();
@@ -691,6 +729,7 @@ static void key_menu(const key_event_t *ev)
         }
         break;
     case KEY_BACK:
+        snd(SND_CANCEL);
         if (editing) {
             editing = 0;
             draw_menu_row(menu_pos);
@@ -714,7 +753,7 @@ typedef struct __attribute__((packed)) {
         uint16_t channel;
         uint32_t vfo;
     } slot[2];
-    uint8_t selected, dual, squelch, step, backlight;
+    uint8_t selected, dual, squelch, step, backlight, sounds;
 } saved_t;
 
 static saved_t saved;                   /* what flash holds now */
@@ -735,6 +774,7 @@ static void gather(saved_t *v)
     v->squelch = (uint8_t)radio_squelch();
     v->step = step;
     v->backlight = backlight;
+    v->sounds = sounds;
 }
 
 static void apply(const saved_t *v)
@@ -759,6 +799,7 @@ static void apply(const saved_t *v)
         step = v->step;
     if (v->backlight < 4)
         backlight = v->backlight;
+    sounds = v->sounds & 3;
     watch_set_dual(v->dual != 0);
     watch_select(v->selected & 1);
 }
@@ -795,6 +836,7 @@ void ui_init(void)
     last_key = millis();
     apply_backlight(1);
     draw_main();
+    snd(SND_POWER_ON);
 }
 
 void ui_refresh(void)
@@ -816,6 +858,8 @@ void ui_key(const key_event_t *ev)
             key_long[ev->key] = 1;          /* and must not type a digit on release */
         return;
     }
+    if (ev->type == KEV_PRESS && ev->key != KEY_PTT && ev->key != KEY_SIDE1 && !locked)
+        snd(SND_KEY);
     if (locked && !(ev->key == KEY_FM && ev->type == KEV_LONG) && ev->key != KEY_SIDE1) {
         if (ev->type == KEV_PRESS && screen == SCR_MAIN) {
             show_toast("locked: hold FM");
@@ -887,6 +931,16 @@ void ui_tick(void)
         draw_status();
     }
     save_if_changed(now);
+    if ((int32_t)(now - next_battery_warn) >= 0) {   /* lowest battery level: say so every 2 min */
+        next_battery_warn = now + 10000;
+        if (battery_bars() == 0) {
+            next_battery_warn = now + 120000;
+            snd(SND_LOW_VOLTAGE);
+            show_toast("Low voltage");
+            if (screen == SCR_MAIN)
+                draw_hint();
+        }
+    }
     if (backlight_s[backlight] && light_on && !radio_open() &&
         now - last_key > (uint32_t)backlight_s[backlight] * 1000)
         apply_backlight(0);

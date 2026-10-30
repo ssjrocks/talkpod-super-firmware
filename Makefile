@@ -31,6 +31,7 @@ C_SOURCES = \
   src/ui.c \
   src/shell.c \
   src/settings.c \
+  src/voice.c \
   drivers/adc.c \
   gfx/font_5x8.c \
   gfx/font_7x13b.c \
