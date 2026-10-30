@@ -3,13 +3,15 @@
 
 usage: emu.py build/a36se-fw.elf [--ms 3000] [--keys 200:UP:100,400:5:900,1800:PTT:300] [--png lcd.png]
               [--bk] [--bkreg 0x67=0x50] [--bkreg-at MS:0x0C=0x0002 ...] [--switch-off-at MS]
-              [--flash tests/data/flash-test.bin]
+              [--flash tests/data/flash-test.bin] [--signal-at 47642500 ...]
 
 --keys is a list of start_ms:KEY:duration_ms (KEY as in drivers/keypad.c key_name()). The BK4819
 is modelled on its bit-banged pins (writes are stored, reads answered from them or --bkreg); --bk
 logs every register access; --bkreg-at changes a register value at a time (a signal opening the
 squelch, a frequency-counter result). The power switch (PF7) reads on until --switch-off-at.
---flash serves an image of the external SPI flash (W25Q16 READ / JEDEC ID); erased otherwise. Time is
+--flash serves an image of the external SPI flash (W25Q16 READ / JEDEC ID); erased otherwise.
+--signal-at puts a steady signal on a frequency (10 Hz units): while the BK4819 is tuned there its
+squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -74,6 +76,7 @@ def main():
     ap.add_argument("--switch-off-at", type=int, default=10**9)
     ap.add_argument("--bkreg-at", action="append", default=[])
     ap.add_argument("--flash")
+    ap.add_argument("--signal-at", action="append", default=[], type=int)
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
@@ -147,13 +150,19 @@ def main():
         elif addr == GPIOA + 0x10:                                 # ISTAT: PTT on PA10, BK4819 SDA PA3
             v = 0xFFFF & ~(1 << 10 if "PTT" in pressed() else 0)
             bk = st["bk"]
-            if bk and bk["n"] >= 8 and bk["read"] and not bit_of(bkregs.get(bk["reg"], 0), 15 - bk["rd_n"]):
+            if bk and bk["n"] >= 8 and bk["read"] and not bit_of(bk_value(bk["reg"]), 15 - bk["rd_n"]):
                 v &= ~(1 << 3)
             uc.mem_write(addr, struct.pack("<I", v))
         elif addr == GPIOF + 0x10:                                 # ISTAT: power switch PF7, high = off
             uc.mem_write(addr, struct.pack("<I", 0xFFFF if st["ms"] >= args.switch_off_at else 0xFF7F))
         elif addr in (GPIOC + 0x10,):
             uc.mem_write(addr, struct.pack("<I", 0xFFFF))
+
+    def bk_value(reg):
+        tuned = bkregs.get(0x39, 0) << 16 | bkregs.get(0x38, 0)
+        if tuned in args.signal_at and reg in (0x0C, 0x65):
+            return (bkregs.get(0x0C, 0) | 0x0002) if reg == 0x0C else 10
+        return bkregs.get(reg, 0)
 
     def bit_of(v, n):
         return (v >> n) & 1
@@ -171,7 +180,7 @@ def main():
                 bkregs[bk["reg"]] = val
                 bklog.append((st["ms"], "W", bk["reg"], val))
             elif bk["read"]:
-                bklog.append((st["ms"], "R", bk["reg"], bkregs.get(bk["reg"], 0)))
+                bklog.append((st["ms"], "R", bk["reg"], bk_value(bk["reg"])))
             st["bk"] = None
         bk = st["bk"]
         if bk is None or cs_now:

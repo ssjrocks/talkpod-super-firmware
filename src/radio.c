@@ -53,18 +53,40 @@ static uint8_t correction(uint32_t f, int *band)
     return corr_130[i > 9 ? 9 : i];
 }
 
+/* Stock thresholds, widened. Measured on this radio (470-490 MHz, no signal): the noise indicator
+   reads 70-80 in narrow mode but 50-79 in wide, where a third of all frequencies sit at the stock
+   threshold (open below 55) and the squelch opens on static. A signal reads 10-32. The RSSI floor
+   (about -95 dBm) is above every stock level (-120..-108 dBm at 476 MHz), so stock's levels barely
+   differ here. So: wide mode lowers the noise threshold by WIDE_NOISE, and each level above 1
+   tightens noise by LEVEL_NOISE and raises the RSSI threshold by LEVEL_RSSI (raw units: 2 per dB).
+   Narrow level 1 stays exactly stock. */
+#define WIDE_NOISE   15
+#define LEVEL_NOISE  3
+#define LEVEL_RSSI   6
+
 static void squelch_regs(uint16_t *reg78, uint16_t *reg4f)
 {
     int band;
     uint8_t c = correction(freq, &band);
-    uint8_t o = sq_open[level], cl = sq_close[level];
+    int o = sq_open[level], cl = sq_close[level];
     if (o > c) {
-        o = (uint8_t)(o - c);
-        cl = (uint8_t)(cl > c ? cl - c : 0);
+        o -= c;
+        cl = cl > c ? cl - c : 0;
     }
-    *reg78 = (uint16_t)(o << 8 | cl);
-    uint8_t n = noise[5 + band] & 0x7F;
-    *reg4f = (uint16_t)(n << 8 | (uint8_t)(n - noise[9]));
+    if (level > 1) {
+        o += (level - 1) * LEVEL_RSSI;
+        cl += (level - 1) * LEVEL_RSSI;
+    }
+    *reg78 = (uint16_t)((o > 255 ? 255 : o) << 8 | (cl > 255 ? 255 : cl));
+
+    int n = noise[5 + band] & 0x7F;
+    if (!narrow)
+        n -= WIDE_NOISE;
+    if (level > 1)
+        n -= (level - 1) * LEVEL_NOISE;
+    if (n < 8 + noise[9])
+        n = 8 + noise[9];
+    *reg4f = (uint16_t)(n << 8 | (n - noise[9]));
 }
 
 static void set_open(int on)

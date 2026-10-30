@@ -19,6 +19,19 @@ static int8_t dir;
 static uint32_t lo, hi, step, tuned_at, closed_since;
 static int channel;
 
+/* frequencies locked out of the scan (static, interference) until cleared or power-off */
+#define LOCKOUT_MAX 32
+static uint32_t lockout[LOCKOUT_MAX];
+static uint8_t nlock;
+
+static int locked(uint32_t f)
+{
+    for (int i = 0; i < nlock; i++)
+        if (lockout[i] == f)
+            return 1;
+    return 0;
+}
+
 int channel_is_am(uint32_t f)
 {
     return f >= 10800000 && f < 13700000;
@@ -28,23 +41,58 @@ static void retune(void)
 {
     if (mode == SCAN_VFO) {
         uint32_t f = radio_freq();
-        f = dir > 0 ? f + step : f - step;
-        if (f > hi)
-            f = lo;
-        if (f < lo)
-            f = hi;
+        for (int i = 0; i <= LOCKOUT_MAX; i++) {         /* past locked-out frequencies */
+            f = dir > 0 ? f + step : f - step;
+            if (f > hi)
+                f = lo;
+            if (f < lo)
+                f = hi;
+            if (!locked(f))
+                break;
+        }
         radio_tune(f, am, narrow);
     } else {
         channel_t ch;
-        int n = channel_next(channel, dir, 1);
-        if (!n || !channel_read(n, &ch)) {
-            mode = SCAN_OFF;
-            return;
+        int n = channel;
+        for (int i = 0; i < CHANNEL_COUNT; i++) {
+            n = channel_next(n, dir, 1);
+            if (!n || !channel_read(n, &ch)) {
+                mode = SCAN_OFF;
+                return;
+            }
+            if (!locked(ch.rx))
+                break;
         }
         channel = n;
         radio_tune(ch.rx, channel_is_am(ch.rx), ch.narrow);
     }
     tuned_at = millis();
+}
+
+void scan_skip(int d)
+{
+    dir = (int8_t)d;
+    holding = 0;
+    retune();
+}
+
+void scan_lockout(void)
+{
+    uint32_t f = radio_freq();
+    if (!locked(f) && nlock < LOCKOUT_MAX)
+        lockout[nlock++] = f;
+    holding = 0;
+    retune();
+}
+
+void scan_lockout_clear(void)
+{
+    nlock = 0;
+}
+
+int scan_lockouts(void)
+{
+    return nlock;
 }
 
 void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int d, int am_mode, int nb)

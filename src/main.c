@@ -14,7 +14,7 @@
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.83";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.84";
 
 #define C_BG     RGB(0, 0, 0)
 #define C_BAR    RGB(0, 40, 110)
@@ -31,6 +31,8 @@ static uint32_t vfo = 47690000;             /* 10 Hz units: UHF CB channel 11 */
 static const uint32_t steps[] = {250, 500, 625, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "12.5k", "25k", "100k", "1M"};
 static uint8_t step = 3, am, narrow, ch_mode, searching, tone_on;
+static uint8_t range;                       /* VFO scan: 0 = +-1 MHz, 1 = +-5 MHz, 2 = whole band */
+static const char *const range_names[] = {" R1M", " R5M", " RBand"};
 static int channel = 1;
 static char ch_name[13];
 
@@ -86,7 +88,7 @@ static void draw_header(void)
 {
     char s[12], n[8];
     lcd_fill(0, 0, LCD_W, 13, C_BAR);
-    gfx_text(4, 2, &font_6x10, "CFW v0.83", C_TEXT, C_BAR);
+    gfx_text(4, 2, &font_6x10, "CFW v0.84", C_TEXT, C_BAR);
     if (ch_mode) {
         dec(n, scan_mode() == SCAN_CH ? scan_channel() : channel);
         append(append(s, "CH "), n);
@@ -105,8 +107,9 @@ static void draw_settings(void)
     p = append(p, step_names[step]);
     p = append(p, " SQ");
     dec(n, radio_squelch());
-    append(p, n);
-    field(4, 54, 120, s, C_TEXT);
+    p = append(p, n);
+    append(p, range_names[range]);
+    field(4, 54, 124, s, C_TEXT);
 }
 
 /* the thresholds the chip is using, in dBm (raw / 2 - 160) */
@@ -130,7 +133,7 @@ static void draw_status(void)
         t = "SEARCH";
         c = C_BUSY;
     } else if (scan_mode() != SCAN_OFF && !scan_holding()) {
-        t = "SCAN";
+        t = scan_lockouts() ? "SCAN (L)" : "SCAN";
         c = C_BUSY;
     } else if (radio_open()) {
         t = radio_monitor() ? "MONITOR" : scan_holding() ? "SCAN HOLD" : "OPEN";
@@ -199,8 +202,23 @@ static void retune(void)
 }
 
 /* VFO scan limits: the band in the radio's band table (flash 0xF230: enable, low MHz, high MHz in
-   BCD) that holds the frequency, airband 108-137 MHz, or 5 MHz either side. */
+   BCD) that holds the frequency, airband 108-137 MHz, or 5 MHz either side; then narrowed to the
+   chosen range around f. */
+static void band_limits(uint32_t f, uint32_t *lo, uint32_t *hi);
+
 static void scan_limits(uint32_t f, uint32_t *lo, uint32_t *hi)
+{
+    static const uint32_t half[] = {100000, 500000};    /* 1 MHz, 5 MHz in 10 Hz units */
+    band_limits(f, lo, hi);
+    if (range < 2) {
+        if (f > *lo + half[range])
+            *lo = f - half[range];
+        if (f + half[range] < *hi)
+            *hi = f + half[range];
+    }
+}
+
+static void band_limits(uint32_t f, uint32_t *lo, uint32_t *hi)
 {
     uint8_t t[20];
     spiflash_read(0xF230, t, sizeof t);
@@ -261,6 +279,8 @@ static void beep(void)
  *   x ADDR LEN    hex dump of the external flash (hex address, decimal length up to 256)
  *   s L           squelch level L (0-9)
  *   m HZ N        retune to HZ (N: 1 = narrow) and log squelch bit, RSSI, noise every 5 ms for 200 ms
+ *   v LO HI ST N  survey LO..HI Hz in ST Hz steps: per step, 80 ms after the retune, print kHz,
+ *                 squelch bit, noise (REG_65), RSSI dBm, glitch (REG_63); any byte stops it
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop. */
 static char line[32];
@@ -419,6 +439,42 @@ static void shell_poll(void)
         redraw();
         debug_puts("ok\r\n");
         break;
+    case 'v': {
+        uint32_t lo = parse_num(&p, 10) / 10, hi = parse_num(&p, 10) / 10, st = parse_num(&p, 10) / 10;
+        uint32_t nb = parse_num(&p, 10);
+        if (lo < 1800000 || hi > 66000000 || lo > hi || st == 0)
+            break;
+        stop_activity();
+        debug_puts("kHz sq noise rssi glitch\r\n");
+        for (uint32_t f = lo; f <= hi; f += st) {
+            char n[12];
+            radio_tune(f, 0, nb != 0);
+            uint32_t t0 = millis();
+            while (millis() - t0 < 80)
+                fwdgt_feed();
+            if (debug_getc() >= 0) {        /* any byte stops it: the shell isn't polled meanwhile */
+                debug_puts("survey stopped\r\n");
+                break;
+            }
+            uint16_t sq = bk4819_read(0x0C), noise = bk4819_read(0x65), rssi = bk4819_read(0x67);
+            uint16_t glitch = bk4819_read(0x63);
+            dec(n, (int)(f / 100));
+            debug_puts(n);
+            debug_puts(sq & 2 ? " 1 " : " 0 ");
+            dec(n, noise & 0x7F);
+            debug_puts(n);
+            debug_puts(" ");
+            dec(n, (rssi & 0x1FF) / 2 - 160);
+            debug_puts(n);
+            debug_puts(" ");
+            dec(n, glitch & 0xFF);
+            debug_puts(n);
+            debug_puts("\r\n");
+        }
+        debug_puts("survey done\r\n");
+        retune();
+        break;
+    }
     case 'm': {
         uint32_t hz = parse_num(&p, 10), nb = parse_num(&p, 10);
         if (hz < 18000000 || hz > 660000000)
@@ -480,14 +536,9 @@ static void on_key(const key_event_t *ev)
         if (searching)
             return;
         if (scan_mode() != SCAN_OFF) {
-            if (press) {
-                if (scan_mode() == SCAN_VFO) {
-                    uint32_t lo, hi;
-                    scan_limits(radio_freq(), &lo, &hi);
-                    scan_start_vfo(lo, hi, steps[step], dir, am, narrow);
-                } else {
-                    scan_start_ch(scan_channel(), dir);
-                }
+            if (press) {                    /* move on (past a hold too) in that direction */
+                scan_skip(dir);
+                draw_freq();
                 draw_status();
             }
             return;
@@ -504,9 +555,26 @@ static void on_key(const key_event_t *ev)
         retune();
         return;
     }
+    if (ev->key == KEY_0 && ev->type == KEV_LONG) {
+        scan_lockout_clear();
+        debug_puts("lockouts cleared\r\n");
+        draw_status();
+        return;
+    }
     if (!press)
         return;
     switch (ev->key) {
+    case KEY_0:                             /* during a scan: never stop on this frequency again */
+        if (scan_mode() != SCAN_OFF) {
+            scan_lockout();
+            draw_freq();
+            draw_status();
+        }
+        break;
+    case KEY_1:
+        range = (uint8_t)((range + 1) % 3);
+        draw_settings();
+        break;
     case KEY_BACK:
         stop_activity();
         break;
@@ -588,7 +656,7 @@ static void on_key(const key_event_t *ev)
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.83 ===\r\nbootloader tag ");
+    debug_puts("\r\n=== A36SE FW v0.84 ===\r\nbootloader tag ");
     debug_write((const uint8_t *)0x08000300U, 7);
     debug_puts("\r\n");
 

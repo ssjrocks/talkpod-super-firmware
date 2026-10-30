@@ -11,6 +11,10 @@ enum { SCAN_EV_NONE, SCAN_EV_STEP, SCAN_EV_HOLD, SCAN_EV_RESUME };
 void scan_start_vfo(uint32_t lo, uint32_t hi, uint32_t step, int dir, int am, int narrow);
 void scan_start_ch(int from, int dir);
 void scan_stop(void);
+void scan_skip(int dir);                    /* move on now, in direction dir */
+void scan_lockout(void);                    /* never stop on this frequency again; move on */
+void scan_lockout_clear(void);
+int  scan_lockouts(void);
 int  scan_mode(void);
 int  scan_holding(void);
 int  scan_channel(void);                    /* channel scan: the channel tuned now */

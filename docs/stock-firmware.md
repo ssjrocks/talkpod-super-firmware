@@ -123,3 +123,13 @@ within 10-30 ms (noise 10-32 on a signal, 53-69 without), but REG_0C bit 1 rises
 delay 2: 50 ms; delay 1: 45 ms). No false opens were seen at delays 0-5 without a signal. This
 radio's RSSI reads about -95 to -125 dBm with no signal, above the calibrated open threshold
 (-120 dBm at level 1, 476 MHz), so the noise criterion is what keeps the squelch closed.
+
+## Squelch survey (v0.84 shell 'v', 470-490 MHz, 12.5 kHz steps, no signal)
+
+Noise indicator: narrow 70-80 almost everywhere; wide 50-79, about a third of all frequencies at
+50-64, scattered (not in blocks). With stock thresholds (open below 55) the wide squelch opened on
+static and stopped scans. A signal reads noise 8-32. The 480.000 MHz spur (10th harmonic of the
+48 MHz MCU clock this firmware runs at; RSSI -65..-80 dBm) opens the squelch in both modes.
+The firmware now lowers the wide noise threshold by 15 and tightens noise by 3 and RSSI by 3 dB per
+level above 1 (narrow level 1 = stock): wide level 1 then had 0 false opens in 900 steps, and a
+strong signal opened levels 1 and 9 in both bandwidths after 65 ms.
