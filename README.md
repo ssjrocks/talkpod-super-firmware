@@ -63,7 +63,9 @@ You need the programming cable (K-plug USB serial) and Linux with Python 3, pyse
 The flasher is `talkpod-firmware` from
 [Talkpod Manager](https://github.com/ssjrocks/talkpod-manager).
 
-1. **Flash** the release's `.kdhx` (or `build/a36se-fw.kdhx`):
+1. **Flash** it. In Talkpod Manager 0.2 or later: main menu → **Flash firmware…** → Talkpod Super
+   Firmware (it downloads the newest release). Or from the command line, the release's `.kdhx` (or
+   `build/a36se-fw.kdhx`):
    ```bash
    talkpod-firmware flash talkpod-super-firmware-v1.0.kdhx
    ```
@@ -113,4 +115,4 @@ The emulator and test tools are described in [docs/development.md](docs/developm
 - The bootloader protocol was cross-checked with OpenRTX's `rtxflash`.
 - Anti-aliased digits rendered from DejaVu Sans Bold (Bitstream Vera licence).
 
-No licence has been chosen for this firmware yet. It is shared privately with researchers.
+No licence has been chosen for this firmware yet.
