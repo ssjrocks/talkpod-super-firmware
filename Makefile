@@ -27,6 +27,14 @@ C_SOURCES = \
   src/radio.c \
   src/scan.c \
   src/channels.c \
+  src/watch.c \
+  src/ui.c \
+  src/shell.c \
+  drivers/adc.c \
+  gfx/font_5x8.c \
+  gfx/font_7x13b.c \
+  gfx/font_digits21.c \
+  gfx/font_digits12.c \
   gfx/gfx.c \
   gfx/font_6x10.c \
   gfx/font_10x20.c \

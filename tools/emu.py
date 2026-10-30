@@ -77,6 +77,7 @@ def main():
     ap.add_argument("--bkreg-at", action="append", default=[])
     ap.add_argument("--flash")
     ap.add_argument("--signal-at", action="append", default=[], type=int)
+    ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
@@ -131,6 +132,10 @@ def main():
             uc.mem_write(addr, struct.pack("<I", 0x02))            # TBE, not busy
         elif addr == SPI0 + 0x08:
             uc.mem_write(addr, struct.pack("<I", 0x03))            # TBE | RBNE
+        elif addr == 0x40012400:
+            uc.mem_write(addr, struct.pack("<I", 0x02))            # ADC conversion done
+        elif addr == 0x4001244C:
+            uc.mem_write(addr, struct.pack("<I", args.adc))
         elif addr == SPI0 + 0x0C:
             uc.mem_write(addr, struct.pack("<I", fl["rx"]))
         elif addr == USART0:
