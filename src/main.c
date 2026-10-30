@@ -14,7 +14,7 @@
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.81";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.83";
 
 #define C_BG     RGB(0, 0, 0)
 #define C_BAR    RGB(0, 40, 110)
@@ -86,7 +86,7 @@ static void draw_header(void)
 {
     char s[12], n[8];
     lcd_fill(0, 0, LCD_W, 13, C_BAR);
-    gfx_text(4, 2, &font_6x10, "CFW v0.81", C_TEXT, C_BAR);
+    gfx_text(4, 2, &font_6x10, "CFW v0.83", C_TEXT, C_BAR);
     if (ch_mode) {
         dec(n, scan_mode() == SCAN_CH ? scan_channel() : channel);
         append(append(s, "CH "), n);
@@ -259,7 +259,8 @@ static void beep(void)
  *   d             dump the main BK4819 registers
  *   b             1 kHz beep
  *   x ADDR LEN    hex dump of the external flash (hex address, decimal length up to 256)
- *   m HZ          retune to HZ and log squelch bit, RSSI and noise every 5 ms for 200 ms
+ *   s L           squelch level L (0-9)
+ *   m HZ N        retune to HZ (N: 1 = narrow) and log squelch bit, RSSI, noise every 5 ms for 200 ms
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop. */
 static char line[32];
@@ -413,13 +414,19 @@ static void shell_poll(void)
         }
         break;
     }
+    case 's':
+        radio_set_squelch((int)parse_num(&p, 10) % 10);
+        redraw();
+        debug_puts("ok\r\n");
+        break;
     case 'm': {
-        uint32_t hz = parse_num(&p, 10);
+        uint32_t hz = parse_num(&p, 10), nb = parse_num(&p, 10);
         if (hz < 18000000 || hz > 660000000)
             break;
         stop_activity();
         ch_mode = 0;
         vfo = hz / 10;
+        narrow = nb != 0;
         uint32_t t0 = millis();
         radio_tune(vfo, am, narrow);
         static uint16_t log[40][3];
@@ -581,7 +588,7 @@ static void on_key(const key_event_t *ev)
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.81 ===\r\nbootloader tag ");
+    debug_puts("\r\n=== A36SE FW v0.83 ===\r\nbootloader tag ");
     debug_write((const uint8_t *)0x08000300U, 7);
     debug_puts("\r\n");
 

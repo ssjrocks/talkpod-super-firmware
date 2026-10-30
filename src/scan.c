@@ -4,13 +4,15 @@
 #include "radio.h"
 #include "system.h"
 
-/* After a retune the squelch is checked every poll (10 ms) from SETTLE_MS on. With nothing there the
-   scan moves on at DWELL_MS; when the RSSI is already above the open threshold it waits up to
-   SIGNAL_MS for the chip's squelch (which also weighs noise) to decide. */
-#define SETTLE_MS  20
-#define DWELL_MS   40
-#define SIGNAL_MS  120
-#define HANG_MS    2000         /* resume this long after the signal went away */
+/* The BK4819 raises its squelch bit 45-65 ms after a retune onto a signal (measured with the stock
+   open delay of 5 in REG_4E: about 40 ms + 5 ms per delay step), so each step gets up to DWELL_MS.
+   The noise indicator (REG_65) settles within 30 ms: 10-32 on a signal, 53-69 without. Where it is
+   clearly above the chip's own close threshold the squelch cannot open, and the scan moves on at
+   SETTLE_MS. */
+#define SETTLE_MS     30
+#define DWELL_MS      80
+#define NOISE_MARGIN  6
+#define HANG_MS       2000      /* resume this long after the signal went away */
 
 static uint8_t mode, holding, am, narrow;
 static int8_t dir;
@@ -103,7 +105,7 @@ int scan_poll(void)
             closed_since = 0;
             return SCAN_EV_HOLD;
         }
-        if (since < DWELL_MS || (since < SIGNAL_MS && (bk4819_read(0x67) & 0x1FF) >= (bk4819_read(0x78) >> 8)))
+        if (since < DWELL_MS && (bk4819_read(0x65) & 0x7F) < (bk4819_read(0x4F) >> 8) + NOISE_MARGIN)
             return SCAN_EV_NONE;
         retune();
         return mode == SCAN_OFF ? SCAN_EV_RESUME : SCAN_EV_STEP;
