@@ -10,6 +10,7 @@ typedef struct {
     uint16_t channel;           /* 1..512 */
     uint32_t vfo;               /* 10 Hz units */
     uint8_t vfo_am, vfo_narrow;
+    uint8_t low_power;          /* TX power for this slot; set from the channel when it changes */
     /* resolved by watch_update() */
     uint32_t freq;
     uint8_t am, narrow;

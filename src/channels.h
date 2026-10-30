@@ -10,6 +10,7 @@
 typedef struct {
     uint32_t rx;                    /* 10 Hz units */
     uint8_t narrow, scan;
+    uint8_t low_power;              /* stock: 0 = high, 1 = low, 2 = medium (shown as high) */
     char name[13];
 } channel_t;
 

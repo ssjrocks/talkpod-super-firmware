@@ -2,7 +2,8 @@
 #include "spiflash.h"
 
 /* record: lbcd rxfreq[4], lbcd txfreq[4], ul16 rxtone, ul16 txtone, u8 signalling, u8 pttid,
-   u8 scramble|power, u8 flags (bit 6 narrow, bit 2 scan), lbcd code[3], u8, char name[12] */
+   u8 scramble << 2 | power (0 high, 1 low, 2 medium), u8 flags (bit 6 narrow, bit 2 scan),
+   lbcd code[3], u8, char name[12] */
 static uint32_t lbcd(const uint8_t *p)
 {
     uint32_t v = 0;
@@ -25,6 +26,7 @@ int channel_read(int n, channel_t *ch)
         return 0;
     ch->narrow = (r[15] >> 6) & 1;
     ch->scan = (r[15] >> 2) & 1;
+    ch->low_power = (r[14] & 3) == 1;
     int len = 0;
     for (int i = 0; i < 12 && r[20 + i] >= 0x20 && r[20 + i] < 0x7F; i++)
         ch->name[len++] = (char)r[20 + i];

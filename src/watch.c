@@ -20,6 +20,8 @@ static void resolve(slot_t *s)
 {
     channel_t ch;
     if (s->is_channel && channel_read(s->channel, &ch)) {
+        if (s->freq != ch.rx)
+            s->low_power = ch.low_power;        /* a new channel brings its own power */
         s->freq = ch.rx;
         s->am = (uint8_t)channel_is_am(ch.rx);
         s->narrow = ch.narrow;

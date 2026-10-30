@@ -1,10 +1,11 @@
 /* User interface: dual-watch main screen (docs/ui/mockups.png, "B dual watch"), menu, about.
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK
- * cancels. A long press runs the function printed on the key: 1 bandwidth, 2 squelch, 3 step,
- * 4 search, 6 scan, 8 channel/VFO, 9 FM/AM. Up/down tune, A/B switches slot, side key 1 is monitor
- * while held, side key 2 starts/stops the channel scan, holding FM locks the keys. During a scan
- * 0 locks the channel out and up/down move on.
+ * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 6 scan, MENU channel/VFO,
+ * FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
+ * monitor while held, side key 2 starts/stops the channel scan. During a scan 0 locks the channel
+ * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
+ * or switch the modulation.
  */
 #include <string.h>
 #include "ui.h"
@@ -199,7 +200,8 @@ static void draw_slot(int i)
     gfx_rrect(5, y + 3, cw, 12, chip_bg);
     gfx_text(7, y + 4, &font_6x10, chip, chip_fg, chip_bg);
     gfx_text(cw + 9, y + 2, &font_7x13b, name, sel ? C_TEXT : C_DIM, bg);
-    const char *mode = s->am ? "AM" : s->narrow ? "N" : "W";
+    char mode[8];
+    put_str(put_str(mode, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
     gfx_text(122 - gfx_text_width(&font_5x8, mode), y + 5, &font_5x8, mode, C_DIM, bg);
 
     if (sel && entry_len) {
@@ -308,7 +310,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.9", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.91", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -429,13 +431,8 @@ static void long_press(int key)
     char t[24];
     switch (key) {
     case KEY_1:
-        if (s->is_channel) {
-            show_toast("channel: fixed");
-            break;
-        }
-        s->vfo_narrow ^= 1;
-        watch_update(sel);
-        show_toast(s->vfo_narrow ? "Narrow" : "Wide");
+        s->low_power ^= 1;
+        show_toast(s->low_power ? "TX power low" : "TX power high");
         break;
     case KEY_2:
         radio_set_squelch((radio_squelch() + 1) % 10);
@@ -464,7 +461,7 @@ static void long_press(int key)
         else
             start_scan();
         break;
-    case KEY_8:
+    case KEY_MENU:
         if (!s->is_channel) {
             s->is_channel = 1;
             if (!s->channel)
@@ -476,15 +473,6 @@ static void long_press(int key)
             s->vfo_narrow = s->narrow;
         }
         watch_update(sel);
-        break;
-    case KEY_9:
-        if (s->is_channel) {
-            show_toast("channel: fixed");
-            break;
-        }
-        s->vfo_am ^= 1;
-        watch_update(sel);
-        show_toast(s->vfo_am ? "AM" : "FM");
         break;
     case KEY_FM:
         locked ^= 1;
@@ -569,6 +557,33 @@ static void key_main(const key_event_t *ev)
         draw_hint();
         return;
     }
+    if (ev->key == KEY_MENU || ev->key == KEY_FM) {      /* short press acts on release */
+        if (ev->type == KEV_PRESS)
+            key_long[ev->key] = 0;
+        if (ev->type != KEV_RELEASE || key_long[ev->key])
+            return;
+        if (ev->key == KEY_FM) {
+            slot_t *s = watch_slot(sel);
+            if (busy || entry_len)
+                return;
+            if (s->is_channel) {
+                show_toast("channel: fixed");
+            } else {
+                s->vfo_am ^= 1;
+                watch_update(sel);
+                show_toast(s->vfo_am ? "AM" : "FM");
+            }
+            draw_main();
+        } else if (entry_len) {
+            commit_entry();
+            draw_main();
+        } else if (!busy) {
+            screen = SCR_MENU;
+            editing = 0;
+            draw_menu();
+        }
+        return;
+    }
     if (ev->type != KEV_PRESS)
         return;
     switch (ev->key) {
@@ -577,16 +592,6 @@ static void key_main(const key_event_t *ev)
             break;
         watch_select(sel ^ 1);
         draw_main();
-        break;
-    case KEY_MENU:
-        if (entry_len) {
-            commit_entry();
-            draw_main();
-        } else if (!busy) {
-            screen = SCR_MENU;
-            editing = 0;
-            draw_menu();
-        }
         break;
     case KEY_BACK:
         entry_len = 0;
