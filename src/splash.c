@@ -64,17 +64,17 @@ static int wait_until(uint32_t until)
     return 0;
 }
 
-void splash_play(void)
+int splash_play(void)
 {
     uint8_t head[12];
     static uint16_t pal[256];
     spiflash_read(FLASH_SPLASH, head, sizeof head);
     if (head[0] != 'A' || head[1] != '3' || head[2] != '6' || head[3] != 'G')
-        return;
+        return 0;
     uint16_t frames = (uint16_t)(head[4] | head[5] << 8), bg = (uint16_t)(head[6] | head[7] << 8);
     uint32_t total = head[8] | head[9] << 8 | (uint32_t)head[10] << 16 | (uint32_t)head[11] << 24;
     if (!frames || total > FLASH_SETTINGS - FLASH_SPLASH)
-        return;
+        return 0;
     faddr = FLASH_SPLASH + sizeof head;
     fpos = sizeof fbuf;
     lcd_fill(0, 0, LCD_W, LCD_H, bg);
@@ -115,4 +115,5 @@ void splash_play(void)
         if (wait_until(due))
             break;
     }
+    return 1;
 }

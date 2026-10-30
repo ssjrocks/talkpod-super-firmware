@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-/* Transmit. Never in 108-138 MHz (aviation) or 406.0-406.1 MHz (distress beacons): the user's
-   licence conditions, see docs. Also not where the BK4819 cannot synthesise (660-840 MHz). */
+/* Transmit. Never in 108-138 MHz (aviation) or 406.0-406.1 MHz (distress beacons): hard blocks,
+   see README. Also not where the BK4819 cannot synthesise (660-840 MHz). */
 void     tx_init(void);                 /* reads the PA calibration from flash */
 int      tx_allowed(uint32_t freq_10hz);
 int      tx_start(uint32_t freq_10hz, int narrow, int low_power);    /* 0 if not allowed */

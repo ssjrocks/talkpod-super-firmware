@@ -18,6 +18,11 @@
  *   m HZ N        retune to HZ (N: 1 = narrow) and log squelch bit, RSSI, noise every 5 ms for 200 ms
  *   v LO HI ST N  survey LO..HI Hz in ST Hz steps: per step, 80 ms after the retune, print kHz,
  *                 squelch bit, noise (REG_65), RSSI dBm, glitch (REG_63); any byte stops it
+ *   i             one line about this firmware for tools such as Talkpod Manager:
+ *                 "fw=TSF ver=1.00 board=HWVER02 splash=00120000+000C0000 splash_fmt=A36G"
+ *   G             play the boot splash now (a preview after uploading one), then "ok" or
+ *                 "no splash"; the screen returns to what it showed
+ * See docs/serial-interface.md.
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop by shell_poll().
  */
@@ -31,6 +36,8 @@
 #include "ui.h"
 #include "voice.h"
 #include "watch.h"
+#include "splash.h"
+#include "version.h"
 
 static char line[32];
 static volatile uint8_t line_len, line_ready;
@@ -357,12 +364,27 @@ void shell_poll(void)
     case 'm':
         measure(p);
         break;
+    case 'i':
+        debug_puts("fw=TSF ver=" FW_VERSION " board=");
+        debug_puts(board_hwver2() ? "HWVER02" : "other");
+        debug_puts(" splash=");
+        debug_hex32(FLASH_SPLASH);
+        debug_putc('+');
+        debug_hex32(FLASH_SETTINGS - FLASH_SPLASH);
+        debug_puts(" splash_fmt=A36G\r\n");
+        break;
+    case 'G': {
+        int played = splash_play();
+        ui_refresh();
+        debug_puts(played ? "ok\r\n" : "no splash\r\n");
+        break;
+    }
     case 'v':
         survey(p);
         break;
     default:
         debug_puts("r RR | w RR VVVV | x/X ADDR LEN | E ADDR | W ADDR LEN | P ID | d | f HZ | s L | "
-                   "t HZ | b | m HZ N | v LO HI ST N\r\n");
+                   "t HZ | b | m HZ N | v LO HI ST N | i | G\r\n");
     }
     line_len = 0;
     line_ready = 0;

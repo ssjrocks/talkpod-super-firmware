@@ -145,8 +145,7 @@ used, rest erased. Stock can erase 4 KB / 32 KB / 64 KB / the whole chip (0x800b
 This firmware writes only to 0x110000-0x1EFFFF (drivers/spiflash.h refuses anything else):
 0x110000 sound pack, 0x120000-0x1DFFFF boot splash, 0x1E0000 settings (32-byte records, newest
 valid wins). 0x110000-0x191FFF was the stock voice area (see Voice prompts).
-The backup is in backups/ (not in git) and can be restored with a stock-firmware tool or a future
-restore command.
+Backups go to backups/ (not in git); there is no restore command yet.
 
 ## Voice prompts
 
@@ -159,6 +158,6 @@ data. Played as PWM on PA11 (TMR1 channel 4, AF2): Super uses period 2201 at 108
 repetition count of 5 and DMA from the update event into C4DT, 8178 samples/s.
 tools/extract_voice.py writes them as WAV files.
 
-On 2026-10-30 the voice area 0x110000-0x191FFF was erased at the user's request and replaced by
-this firmware's sound pack (tools/soundpack.py: ten sounds, 27.9 KB). All prompts are in the
-2 MB backup; stock firmware will have no voice prompts unless the backup is restored.
+On the development radio the voice area 0x110000-0x191FFF was erased and replaced by this
+firmware's sound pack (tools/soundpack.py: ten sounds, 27.9 KB). The prompts are kept in the 2 MB
+backup; stock firmware has no voice prompts until the backup is written back.
