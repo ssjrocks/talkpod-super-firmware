@@ -13,7 +13,8 @@ squelch, a frequency-counter result). The power switch (PF7) reads on until --sw
 --signal-at puts a steady signal on a frequency (10 Hz units): while the BK4819 is tuned there its
 squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. --fsk-rx MS:HEX delivers an
 FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO), and an FSK send
-(REG_59 bit 11) finishes 430 ms after it starts. --pins PC15,PA13 logs those outputs among the
+(REG_59 bit 11) reports its FIFO almost empty every 50 ms and finishes when REG_5D bytes would
+have taken at REG_72's bit rate. --pins PC15,PA13 logs those outputs among the
 BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
@@ -118,7 +119,7 @@ def main():
     bklog = []
     fsk = []                                # (ms, flags to hand out, words)
     fifo = []                               # received words not read yet
-    fsk_tx = {"done_at": None}              # FSK send started (REG_59 bit 11): finished 430 ms later
+    fsk_tx = {"done_at": None, "empty_at": None}   # an FSK send (REG_59 bit 11): FIFO refills, end
     for item in args.fsk_rx:
         when, hx = item.split(":")
         data = bytes.fromhex(hx).ljust(46, b"\0")
@@ -186,12 +187,15 @@ def main():
             uc.mem_write(addr, struct.pack("<I", 0xFFFF))
 
     def bk_value(reg):
-        if fsk_tx["done_at"] is not None and st["ms"] >= fsk_tx["done_at"]:
+        if fsk_tx["done_at"] is not None and st["ms"] >= min(fsk_tx["done_at"], fsk_tx["empty_at"]):
             if reg == 0x0C:
                 return bkregs.get(0x0C, 0) | 1
             if reg == 0x02:
-                fsk_tx["done_at"] = None
-                return 0x8000
+                if st["ms"] >= fsk_tx["done_at"]:
+                    fsk_tx["done_at"] = None
+                    return 0x8000
+                fsk_tx["empty_at"] += 50
+                return 0x4000
         if fsk and fsk[0][0] <= st["ms"]:
             pkt = fsk[0]
             if reg == 0x0C:
@@ -225,8 +229,11 @@ def main():
             if bk["n"] == 24 and not bk["read"]:
                 val = bk["v"] & 0xFFFF
                 bkregs[bk["reg"]] = val
-                if bk["reg"] == 0x59 and val & 0x0800:
-                    fsk_tx["done_at"] = st["ms"] + 430
+                if bk["reg"] == 0x59 and val & 0x0800:      # as long as REG_5D bytes take at REG_72's rate
+                    baud = max(1, bkregs.get(0x72, 12389) * 10000 // 103244)
+                    n = 20 + (bkregs.get(0x5D, 0x2C00) >> 8)
+                    fsk_tx["done_at"] = st["ms"] + n * 8 * 1000 // baud
+                    fsk_tx["empty_at"] = st["ms"] + 50
                 bklog.append((st["ms"], "W", bk["reg"], val, st["n"] * 2))
             elif bk["read"]:
                 bklog.append((st["ms"], "R", bk["reg"], bk["val"]))
