@@ -8,6 +8,8 @@
  *   W ADDR LEN    then LEN raw bytes (up to 256) and their CRC-16/XMODEM (big-endian): write them
  *                 at ADDR (hex) into erased flash; only in the firmware's own region
  *   P ID          play sound ID from the sound pack (tools/soundpack.py)
+ *   V             sound player state (src/voice.c voice_debug)
+ *   R ADDR        read the 32-bit word at ADDR (hex), e.g. a peripheral register
  *   d             dump the main BK4819 registers and GPIO outputs
  *   f HZ          tune the selected slot (as VFO) to HZ
  *   s L           squelch level L (0-9)
@@ -278,6 +280,22 @@ void shell_poll(void)
     case 'P':
         debug_puts(voice_play((int)parse_num(&p, 10)) ? "ok\r\n" : "no such sound\r\n");
         break;
+    case 'R': {                             /* R ADDR: one 32-bit word anywhere (registers) */
+        uint32_t addr = parse_num(&p, 16) & ~3U;
+        debug_hex32(*(volatile uint32_t *)addr);
+        debug_puts("\r\n");
+        break;
+    }
+    case 'V': {
+        uint32_t v[8];
+        voice_debug(v);
+        for (int i = 0; i < 8; i++) {
+            debug_hex32(v[i]);
+            debug_putc(i < 7 ? ' ' : '\r');
+        }
+        debug_puts("\n");
+        break;
+    }
     case 'd': {
         static const uint8_t regs[] = {0x0C, 0x30, 0x33, 0x37, 0x43, 0x47, 0x48, 0x4F, 0x65, 0x67,
                                        0x70, 0x78, 0x7E};

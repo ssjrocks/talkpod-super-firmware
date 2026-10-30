@@ -51,6 +51,7 @@ static volatile uint32_t left;          /* bytes not yet decoded */
 static volatile int32_t pred;
 static volatile uint8_t idx;
 static volatile uint16_t ramp, last;
+static volatile uint32_t isr_count;
 static uint32_t src, src_left;          /* flash not yet buffered */
 static uint8_t timer_ready;
 
@@ -58,6 +59,7 @@ void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
 {
     uint16_t out = last;
     TMR1_ISTS = 0;
+    isr_count++;
     switch (state) {
     case RAMP_IN:
         out = (uint16_t)(PERIOD - (PERIOD - MID) * ramp / RAMP);
@@ -196,6 +198,18 @@ int voice_play(int id)
     TMR1_BRK = 0x8000;                  /* main output on */
     TMR1_CTRL1 = 1;
     return 1;
+}
+
+void voice_debug(uint32_t v[8])
+{
+    v[0] = state;
+    v[1] = isr_count;
+    v[2] = rd;
+    v[3] = wr;
+    v[4] = left;
+    v[5] = TMR1_C4DT;
+    v[6] = TMR1_CTRL1 | TMR1_BRK << 8;
+    v[7] = *(volatile uint32_t *)0x40012C24U;   /* counter */
 }
 
 int voice_busy(void)

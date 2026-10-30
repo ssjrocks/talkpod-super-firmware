@@ -882,7 +882,10 @@ void ui_tick(void)
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
 
-    if (searching) {
+    if (voice_busy()) {
+        /* no retuning while a sound plays: each retune switches the BK4819's audio stage, which the
+           speaker (on for the sound) turns into a pop; stock stops the receiver for its prompts */
+    } else if (searching) {
         uint32_t f;
         if (radio_search_poll(&f)) {
             int sel = watch_selected();
