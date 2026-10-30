@@ -1,14 +1,20 @@
 #include "scan.h"
+#include "bk4819.h"
 #include "channels.h"
 #include "radio.h"
 #include "system.h"
 
-#define SETTLE_MS  35           /* after a retune, before reading the squelch */
+/* After a retune the squelch is checked every poll (10 ms) from SETTLE_MS on. With nothing there the
+   scan moves on at DWELL_MS; when the RSSI is already above the open threshold it waits up to
+   SIGNAL_MS for the chip's squelch (which also weighs noise) to decide. */
+#define SETTLE_MS  20
+#define DWELL_MS   40
+#define SIGNAL_MS  120
 #define HANG_MS    2000         /* resume this long after the signal went away */
 
 static uint8_t mode, holding, am, narrow;
 static int8_t dir;
-static uint32_t lo, hi, step, next_at, closed_since;
+static uint32_t lo, hi, step, tuned_at, closed_since;
 static int channel;
 
 int channel_is_am(uint32_t f)
@@ -36,7 +42,7 @@ static void retune(void)
         channel = n;
         radio_tune(ch.rx, channel_is_am(ch.rx), ch.narrow);
     }
-    next_at = millis() + SETTLE_MS;
+    tuned_at = millis();
 }
 
 void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int d, int am_mode, int nb)
@@ -50,6 +56,7 @@ void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int d, int am
     mode = SCAN_VFO;
     holding = 0;
     radio_set_monitor(0);
+    radio_tune(radio_freq() / step * step, am, narrow);    /* onto the step grid */
     retune();
 }
 
@@ -86,7 +93,8 @@ int scan_channel(void)
 
 int scan_poll(void)
 {
-    if (mode == SCAN_OFF || (int32_t)(millis() - next_at) < 0)
+    uint32_t since = millis() - tuned_at;
+    if (mode == SCAN_OFF || since < SETTLE_MS)
         return SCAN_EV_NONE;
     radio_poll();
     if (!holding) {
@@ -95,6 +103,8 @@ int scan_poll(void)
             closed_since = 0;
             return SCAN_EV_HOLD;
         }
+        if (since < DWELL_MS || (since < SIGNAL_MS && (bk4819_read(0x67) & 0x1FF) >= (bk4819_read(0x78) >> 8)))
+            return SCAN_EV_NONE;
         retune();
         return mode == SCAN_OFF ? SCAN_EV_RESUME : SCAN_EV_STEP;
     }
