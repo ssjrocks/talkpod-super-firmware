@@ -176,6 +176,8 @@ void progmode_poll(void)
         memmove(window, window + 1, sizeof window - 1);
         window[sizeof window - 1] = (char)c;
         if (memcmp(window, MAGIC, sizeof window) == 0) {
+            if (shell_input)
+                shell_input(0x18);              /* CAN: drop the handshake from the shell's line */
             debug_mute(1);
             debug_putc(ACK);
             in_prog = 1;

@@ -56,6 +56,10 @@ void shell_input(char c)
     }
     if (line_ready)
         return;
+    if (c == 0x18) {                        /* CAN: forget the line (program mode took over) */
+        line_len = 0;
+        return;
+    }
     if (c == '\r' || c == '\n') {
         if (line_len) {
             line[line_len] = 0;
