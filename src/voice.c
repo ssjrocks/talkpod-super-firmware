@@ -136,7 +136,7 @@ static void stop(void)
     gpio_mode_set(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, AUX_PA11_PIN);
     state = IDLE;
     board_speaker(SPK_VOICE, 0);
-    radio_audio_hold(0);
+    radio_audio_hold(HOLD_VOICE, 0);
 }
 
 static void refill(void)
@@ -188,7 +188,7 @@ int voice_play(int id)
     ramp = 0;
     refill();
 
-    radio_audio_hold(1);
+    radio_audio_hold(HOLD_VOICE, 1);
     board_speaker(SPK_VOICE, 1);
     TMR1_C4DT = PERIOD;
     gpio_af_set(GPIOA, GPIO_AF_2, AUX_PA11_PIN);

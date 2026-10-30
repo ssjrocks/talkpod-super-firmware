@@ -1,8 +1,9 @@
-/* User interface: dual-watch main screen (docs/ui/mockups.png, "B dual watch"), menu, about.
+/* User interface: dual-watch main screen (docs/ui/mockups.png, "B dual watch"), menu, messages,
+ * about.
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK
- * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 6 scan, MENU channel/VFO,
- * FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
+ * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 5 messages, 6 scan,
+ * MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
  * monitor while held, side key 2 starts/stops the channel scan. During a scan 0 locks the channel
  * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
  * or switch the modulation.
@@ -23,6 +24,7 @@
 #include "settings.h"
 #include "voice.h"
 #include "tx.h"
+#include "msg.h"
 
 #define C_BG     RGB(8, 10, 18)
 #define C_PANEL  RGB(26, 32, 48)
@@ -39,7 +41,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
@@ -132,7 +134,9 @@ static void draw_status(void)
     else if (scan_mode() != SCAN_OFF)
         gfx_text(x, 2, &font_5x8, scan_lockouts() ? "SCAN L" : "SCAN", C_AMBER, C_PANEL);
     if (locked)
-        gfx_icon(74, 2, &icon_lock, C_DIM, C_PANEL);
+        gfx_icon(67, 2, &icon_lock, C_DIM, C_PANEL);
+    if (msg_unread())
+        gfx_icon(76, 2, &icon_envelope, C_AMBER, C_PANEL);
 
     int dv = battery_decivolts();
     p = put_dec(s, (uint32_t)dv / 10);
@@ -304,12 +308,13 @@ static void draw_main(void)
 
 /* ---- menu ---------------------------------------------------------------------------------- */
 
-enum { M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_TOT, M_KEYBEEP, M_VOICE,
-       M_SCAN, M_ABOUT, M_COUNT };
+enum { M_MESSAGES, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_TOT,
+       M_MSG_SPEED, M_MSG_RECEIPTS, M_KEYBEEP, M_VOICE, M_SCAN, M_ABOUT, M_COUNT };
 static const char *const menu_names[M_COUNT] = {
-    "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "TX timeout",
-    "Key beep", "Voice", "Scan channels", "About",
+    "Messages", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "TX timeout",
+    "Msg speed", "Msg receipts", "Key beep", "Voice", "Scan channels", "About",
 };
+static const char *const msg_speed_names[] = {"1200", "700", "450"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
 static uint8_t menu_pos, menu_top, editing;
 
@@ -325,6 +330,9 @@ static void menu_value(int item, char *s)
     case M_DUAL:       put_str(s, watch_dual() ? "On" : "Off"); break;
     case M_BACKLIGHT:  put_str(s, backlight_names[backlight]); break;
     case M_TOT:        put_str(s, tot_names[tot]); break;
+    case M_MESSAGES:   if (msg_unread()) put_str(put_dec(s, (uint32_t)msg_unread()), " new"); break;
+    case M_MSG_SPEED:  put_str(s, msg_speed_names[msg_modem()]); break;
+    case M_MSG_RECEIPTS: put_str(s, msg_receipts() ? "On" : "Off"); break;
     case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
     case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
     default: break;
@@ -371,7 +379,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.94", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.95", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -389,12 +397,139 @@ static void draw_about(void)
     gfx_text(4, 112, &font_5x8, "BACK to return", C_DIM, C_BG);
 }
 
+/* ---- messages screen ----------------------------------------------------------------------- */
+
+/* History above (newest at the bottom: "<" received, ">" sent, a green "+" once the other radio sent
+   its receipt), the message being typed below. Typing as on a phone: a key's letters, then its
+   digit, cycle while it is pressed again within TAP_MS; holding a key types its digit; 0 is a space.
+   FM switches ABC / abc, MENU sends, BACK deletes and leaves when nothing is left, up/down scroll. */
+#define TAP_MS     1000
+#define MSG_LINE   21                   /* font_6x10 characters on a line */
+#define MSG_BOTTOM 97                   /* the history ends here, the typing box starts */
+static const char *const key_chars[10] = {
+    " 0", ".,?!-'/@1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
+};
+static char comp[MSG_TEXT + 1];
+static uint8_t comp_len, tap_key = 0xFF, tap_n, tap_shown, lower, msg_scroll;
+static uint32_t tap_at;
+
+static int tap_pending(void)
+{
+    return tap_key != 0xFF && millis() - tap_at < TAP_MS;
+}
+
+static void draw_msg_header(void)
+{
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "Messages", C_TEXT, C_PANEL);
+    const char *r = msg_receiving() ? "receiving" : msg_speed_names[msg_modem()];
+    gfx_text(124 - gfx_text_width(&font_5x8, r), 4, &font_5x8, r, msg_receiving() ? C_GREEN : C_DIM,
+             C_PANEL);
+}
+
+static void draw_msg_history(void)
+{
+    char full[34], line[MSG_LINE + 1];
+    int y = MSG_BOTTOM;
+    lcd_fill(0, 14, LCD_W, MSG_BOTTOM - 14, C_BG);
+    if (!msg_count()) {
+        gfx_text(4, 30, &font_6x10, "No messages yet.", C_DIM, C_BG);
+        gfx_text(4, 46, &font_5x8, "Type below, MENU sends", C_DIM, C_BG);
+        gfx_text(4, 56, &font_5x8, "on the selected slot.", C_DIM, C_BG);
+        return;
+    }
+    for (int i = msg_scroll; i < msg_count() && y > 24; i++) {
+        const msg_t *m = msg_get(i);
+        int in = m->flags & MSG_IN;
+        put_str(put_str(full, in ? "< " : m->flags & MSG_DELIVERED ? "+ " : "> "), m->text);
+        int n = (int)strlen(full), lines = (n + MSG_LINE - 1) / MSG_LINE;
+        uint16_t c = m->flags & MSG_SECRET ? C_DIM : in ? C_TEXT : C_CYAN;
+        for (int l = lines - 1; l >= 0 && y > 24; l--) {
+            y -= 10;
+            memcpy(line, full + l * MSG_LINE, MSG_LINE);
+            line[MSG_LINE] = 0;
+            gfx_text(1, y, &font_6x10, line, c, C_BG);
+            if (l == 0)
+                gfx_text(1, y, &font_6x10, (char[]){full[0], 0},
+                         in ? C_GREEN : m->flags & MSG_DELIVERED ? C_GREEN : C_CYAN, C_BG);
+        }
+    }
+}
+
+static void draw_msg_compose(void)
+{
+    char line[MSG_LINE + 1], s[24];
+    lcd_fill(0, MSG_BOTTOM, LCD_W, LCD_H - MSG_BOTTOM, C_PANEL);
+    for (int l = 0; l < 2; l++) {
+        int from = l * MSG_LINE, n = comp_len - from;
+        if (n <= 0)
+            break;
+        memcpy(line, comp + from, (size_t)(n > MSG_LINE ? MSG_LINE : n));
+        line[n > MSG_LINE ? MSG_LINE : n] = 0;
+        gfx_text(1, MSG_BOTTOM + 2 + l * 10, &font_6x10, line, C_TEXT, C_PANEL);
+    }
+    tap_shown = (uint8_t)tap_pending();
+    int last = comp_len - 1, cx = 1 + (comp_len % MSG_LINE) * 6, cy = MSG_BOTTOM + 2 + comp_len / MSG_LINE * 10;
+    if (tap_shown && last >= 0)                 /* the letter still cycling */
+        gfx_text(1 + (last % MSG_LINE) * 6, MSG_BOTTOM + 2 + last / MSG_LINE * 10, &font_6x10,
+                 (char[]){comp[last], 0}, C_BG, C_AMBER);
+    else if (comp_len < MSG_TEXT)
+        lcd_fill(cx, cy + 9, 5, 1, C_CYAN);    /* cursor */
+    if ((int32_t)(toast_until - millis()) > 0) {
+        gfx_text(1, LCD_H - 9, &font_5x8, toast, C_AMBER, C_PANEL);
+        return;
+    }
+    put_str(put_dec(put_str(put_dec(put_str(s, lower ? "abc " : "ABC "), comp_len), "/"), MSG_TEXT),
+            comp_len ? "  MENU send" : "  BACK exit");
+    gfx_text(1, LCD_H - 9, &font_5x8, s, C_DIM, C_PANEL);
+}
+
+static void draw_msg(void)
+{
+    draw_msg_header();
+    draw_msg_history();
+    draw_msg_compose();
+}
+
+static void open_messages(void)
+{
+    screen = SCR_MSG;
+    msg_read_all();
+    msg_scroll = 0;
+    draw_msg();
+}
+
+static void type_key(int digit, int hold)
+{
+    const char *set = key_chars[digit];
+    uint32_t now = millis();
+    if (!hold && digit == tap_key && now - tap_at < TAP_MS && comp_len) {
+        tap_n = (uint8_t)((tap_n + 1) % strlen(set));
+        comp_len--;                             /* the same key again: the next character */
+    } else {
+        tap_n = 0;
+        if (comp_len >= MSG_TEXT) {
+            show_toast("message full");
+            return;
+        }
+    }
+    char c = hold ? (char)('0' + digit) : set[tap_n];
+    if (lower && c >= 'A' && c <= 'Z')
+        c = (char)(c + 32);
+    comp[comp_len++] = c;
+    comp[comp_len] = 0;
+    tap_key = hold ? 0xFF : (uint8_t)digit;
+    tap_at = now;
+}
+
 static void redraw(void)
 {
     if (screen == SCR_MAIN)
         draw_main();
     else if (screen == SCR_MENU)
         draw_menu();
+    else if (screen == SCR_MSG)
+        draw_msg();
     else
         draw_about();
 }
@@ -541,6 +676,9 @@ static void long_press(int key)
         locked ^= 1;
         show_toast(locked ? "Keys locked" : "Keys unlocked");
         break;
+    case KEY_5:
+        open_messages();
+        return;
     default:
         return;
     }
@@ -715,6 +853,90 @@ static void key_main(const key_event_t *ev)
     }
 }
 
+static void send_message(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    tap_key = 0xFF;
+    lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
+    gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
+    int r = msg_send(comp, s->freq, s->narrow, s->low_power);
+    watch_pause(0);
+    if (r > 0) {
+        comp_len = 0;
+        comp[0] = 0;
+        msg_scroll = 0;
+        debug_puts("message sent\r\n");
+    } else {
+        show_toast(r < 0 ? "TX not allowed here" : "not sent");
+    }
+    draw_msg();
+}
+
+static void key_msg(const key_event_t *ev)
+{
+    int d = digit_of(ev->key);
+    if (d >= 0) {
+        if (ev->type == KEV_PRESS) {
+            key_long[ev->key] = 0;
+        } else if (ev->type == KEV_LONG) {
+            key_long[ev->key] = 1;
+            type_key(d, 1);
+            draw_msg_compose();
+        } else if (ev->type == KEV_RELEASE && !key_long[ev->key]) {
+            type_key(d, 0);
+            draw_msg_compose();
+        }
+        return;
+    }
+    if (ev->type == KEV_LONG && ev->key == KEY_BACK) {
+        comp_len = 0;                           /* hold BACK: clear it all */
+        comp[0] = 0;
+        draw_msg_compose();
+        return;
+    }
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    switch (ev->key) {
+    case KEY_FM:
+        lower ^= 1;
+        tap_key = 0xFF;
+        draw_msg_compose();
+        break;
+    case KEY_MENU:
+        if (comp_len)
+            send_message();
+        break;
+    case KEY_BACK:
+        snd(SND_CANCEL);
+        tap_key = 0xFF;
+        if (comp_len) {
+            comp[--comp_len] = 0;
+            draw_msg_compose();
+        } else {
+            screen = SCR_MAIN;
+            draw_main();
+        }
+        break;
+    case KEY_UP:
+        if (msg_scroll + 1 < msg_count()) {
+            msg_scroll++;
+            draw_msg_history();
+        }
+        break;
+    case KEY_DOWN:
+        if (msg_scroll) {
+            msg_scroll--;
+            draw_msg_history();
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 static void menu_change(int dir)
 {
     slot_t *s = watch_slot(watch_selected());
@@ -745,6 +967,12 @@ static void menu_change(int dir)
         break;
     case M_TOT:
         tot = (uint8_t)((tot + 6 + dir) % 6);
+        break;
+    case M_MSG_SPEED:
+        msg_set_modem((msg_modem() + 3 - dir) % 3);
+        break;
+    case M_MSG_RECEIPTS:
+        msg_set_receipts(!msg_receipts());
         break;
     case M_KEYBEEP:
         sounds ^= 1;
@@ -792,6 +1020,8 @@ static void key_menu(const key_event_t *ev)
             screen = SCR_MAIN;
             start_scan();
             draw_main();
+        } else if (menu_pos == M_MESSAGES) {
+            open_messages();
         } else if (menu_pos == M_ABOUT) {
             screen = SCR_ABOUT;
             draw_about();
@@ -826,6 +1056,7 @@ typedef struct __attribute__((packed)) {
         uint32_t vfo;
     } slot[2];
     uint8_t selected, dual, squelch, step, backlight, sounds, tot;
+    uint8_t msg;                        /* message speed (BK_FSK_*) | 4 no receipts */
 } saved_t;
 
 static saved_t saved;                   /* what flash holds now */
@@ -848,6 +1079,7 @@ static void gather(saved_t *v)
     v->backlight = backlight;
     v->sounds = sounds;
     v->tot = tot;
+    v->msg = (uint8_t)(msg_modem() | (msg_receipts() ? 0 : 4));
 }
 
 static void apply(const saved_t *v)
@@ -875,6 +1107,7 @@ static void apply(const saved_t *v)
     sounds = v->sounds & 3;
     if (v->tot < 6)
         tot = v->tot;
+    msg_init((v->msg & 3) < 3 ? v->msg & 3 : BK_FSK_1200, !(v->msg & 4));
     watch_set_dual(v->dual != 0);
     watch_select(v->selected & 1);
 }
@@ -903,6 +1136,7 @@ void ui_init(void)
     if (radio_squelch() == 0)
         radio_set_squelch(1);           /* 0 is always open, which leaves dual watch on slot A */
     watch_init();
+    msg_init(BK_FSK_1200, 1);
     gather(&v);                         /* defaults for anything an older record lacks */
     if (settings_load(&v, sizeof v)) {
         apply(&v);
@@ -956,10 +1190,58 @@ void ui_key(const key_event_t *ev)
         key_main(ev);
     else if (screen == SCR_MENU)
         key_menu(ev);
+    else if (screen == SCR_MSG)
+        key_msg(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();
     }
+}
+
+/* incoming packets, receipts to send, and telling the user */
+static void messages(uint32_t now)
+{
+    int e = msg_poll();
+    if (e & MSG_EV_RECEIPT_DUE && !searching) {
+        int scanning = scan_mode() != SCAN_OFF;
+        voice_stop();
+        if (!scanning)
+            watch_pause(1);
+        msg_send_receipt(watch_slot(watch_rx_slot())->low_power);
+        if (scanning)
+            radio_retune();
+        else
+            watch_pause(0);
+        if (screen == SCR_MAIN)
+            draw_main();
+    }
+    if (e & MSG_EV_NEW) {
+        const msg_t *m = msg_get(0);
+        char t[24];
+        debug_puts("message: ");
+        debug_puts(m->text);
+        debug_puts("\r\n");
+        apply_backlight(1);
+        last_key = now;
+        snd(SND_OPEN);
+        if (screen == SCR_MSG) {
+            msg_read_all();
+            msg_scroll = 0;
+        } else {
+            memcpy(put_str(t, "MSG "), m->text, 19);
+            t[23] = 0;
+            show_toast(t);
+            toast_until = now + 4000;
+        }
+    }
+    if (e & MSG_EV_DELIVERED && screen != SCR_MSG)
+        show_toast("Message delivered");
+    if (!e)
+        return;
+    if (screen == SCR_MSG)
+        draw_msg();
+    else if (screen == SCR_MAIN)
+        draw_status(), draw_hint();
 }
 
 void ui_tick(void)
@@ -967,6 +1249,8 @@ void ui_tick(void)
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
 
+    if (!tx_active())
+        messages(now);
     if (tx_active()) {
         if (tot_s[tot] && tx_seconds() >= tot_s[tot]) {
             tx_stop();
@@ -978,6 +1262,8 @@ void ui_tick(void)
             draw_hint();
         }
         last_key = now;                 /* keeps the backlight on */
+    } else if (msg_receiving()) {
+        /* a packet is arriving: no retuning until it is complete */
     } else if (voice_busy()) {
         /* no retuning while a sound plays: each retune switches the BK4819's audio stage, which the
            speaker (on for the sound) turns into a pop; stock stops the receiver for its prompts */
@@ -1024,6 +1310,12 @@ void ui_tick(void)
             toast_until = 0;
             draw_hint();
         }
+    }
+    if (screen == SCR_MSG && tap_shown && !tap_pending())
+        draw_msg_compose();                     /* the cycling letter is settled */
+    if (screen == SCR_MSG && toast_until && (int32_t)(now - toast_until) >= 0) {
+        toast_until = 0;
+        draw_msg_compose();
     }
     if (screen == SCR_MAIN && (int32_t)(now - next_status) >= 0) {
         next_status = now + 5000;

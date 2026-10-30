@@ -9,6 +9,11 @@
 #include "board.h"
 #include "system.h"
 
+/* Interrupt enables: stock's 0x07FE (squelch, VOX, tones, FSK sync) plus FSK FIFO almost full (12),
+   RX finished (13) and TX finished (15) for the text messages. Nothing is wired to an MCU pin: the
+   flags are polled in REG_0C bit 0 / REG_02. */
+#define IRQ_ENABLE 0xB7FE
+
 static void half_bit(void)
 {
     for (volatile int i = 0; i < 12; i++) {}     /* ~2 us at 48 MHz: about 250 kHz */
@@ -80,7 +85,7 @@ void bk4819_init(void)
     static const uint16_t seq1[][2] = {
         {0x37, 0x1D0F}, {0x13, 0x03BE}, {0x12, 0x037B}, {0x11, 0x027B}, {0x10, 0x007A},
         {0x14, 0x0019}, {0x49, 0x2A38}, {0x7B, 0x8420}, {0x7D, 0xE952}, {0x48, 0xB3FF},
-        {0x1E, 0x4C58}, {0x1F, 0xA656}, {0x3E, 0xA037}, {0x3F, 0x07FE}, {0x2A, 0x7FFF},
+        {0x1E, 0x4C58}, {0x1F, 0xA656}, {0x3E, 0xA037}, {0x3F, IRQ_ENABLE}, {0x2A, 0x7FFF},
         {0x28, 0x6B00}, {0x53, 0xE678}, {0x2C, 0x5705}, {0x4B, 0x7102},
     };
     static const uint16_t seq2[][2] = {
@@ -100,6 +105,9 @@ void bk4819_init(void)
         bk4819_write((uint8_t)seq2[i][0], seq2[i][1]);
 }
 
+static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len;
+static void fsk_arm(void);
+
 void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
 {
     bk4819_write(0x37, 0x1F0F);
@@ -117,6 +125,8 @@ void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
     bk4819_write(0x28, 0x6B38);                  /* RX audio expander, as stock 0x8004980 */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xBFF1);                  /* RX: VCO cal, RX link, AF DAC, PLL, RX DSP */
+    if (fsk_modem != BK_FSK_OFF)
+        fsk_arm();                               /* a fresh FIFO on every frequency */
 }
 
 void bk4819_off(void)
@@ -192,7 +202,9 @@ void bk4819_search(int on)
         bk4819_write(0x32, 0x8245);
     } else {
         bk4819_write(0x32, 0x8244);
-        bk4819_write(0x3F, 0x07FE);              /* interrupt enables, as init */
+        bk4819_write(0x3F, IRQ_ENABLE);
+        if (fsk_modem != BK_FSK_OFF)
+            bk4819_fsk_setup(fsk_modem, fsk_rx_len);   /* the counter cleared REG_58/59/70 */
     }
 }
 
@@ -211,4 +223,92 @@ int bk4819_search_result(uint32_t *freq_10hz)
 int bk4819_squelch_open(void)
 {
     return (bk4819_read(0x0C) & 0x0002) != 0;
+}
+
+uint16_t bk4819_irq(void)
+{
+    if (!(bk4819_read(0x0C) & 0x0001))
+        return 0;
+    bk4819_write(0x02, 0x0000);
+    return bk4819_read(0x02);
+}
+
+/* ---- FSK modem: the UV-K5 messenger's settings (kamilsss655 firmware, app/messenger.c) ---------
+ * REG_70 tone 2 on at gain 96; REG_72 the bit rate as a tone-2 frequency word; REG_58 FFSK
+ * 1200/1800 for 1200 bit/s, plain FSK for 700 and 450; sync bytes 30 72 57 6C (4-byte sync); no
+ * CRC (REG_5C 0x5625); 16 preamble bytes when sending. */
+static const uint16_t fsk_rate[] = {1200, 700, 450};
+
+static void fsk_regs(int tx, int len)
+{
+    static const uint16_t tone2[] = {12389, 7227, 4646};
+    uint16_t r59 = (uint16_t)((tx ? 15u << 4 : 0) | 1u << 3);   /* preamble length, 4-byte sync */
+    bk4819_write(0x70, 0x00E0);
+    bk4819_write(0x72, tone2[fsk_modem]);
+    bk4819_write(0x58, fsk_modem == BK_FSK_1200 ? 0x3F03 : 0x0301);
+    bk4819_write(0x5A, 0x3072);
+    bk4819_write(0x5B, 0x576C);
+    bk4819_write(0x5C, 0x5625);
+    if (!tx)
+        bk4819_write(0x5E, 64u << 3 | 1);       /* FIFO almost full at 1 word */
+    bk4819_write(0x5D, (uint16_t)(len << 8));
+    bk4819_write(0x59, r59 | 0xC000);           /* clear both FIFOs */
+    bk4819_write(0x59, r59);
+    bk4819_write(0x02, 0x0000);
+}
+
+static void fsk_arm(void)
+{
+    bk4819_write(0x59, 0xC000 | 1u << 3);
+    bk4819_write(0x59, 0x1000 | 1u << 3);       /* FSK receive on */
+}
+
+void bk4819_fsk_setup(int modem, int rx_len)
+{
+    fsk_modem = (uint8_t)modem;
+    fsk_rx_len = (uint8_t)rx_len;
+    if (modem == BK_FSK_OFF) {
+        bk4819_write(0x59, 0x0000);
+        bk4819_write(0x70, 0x0000);
+        bk4819_write(0x58, 0x0000);
+        return;
+    }
+    fsk_regs(0, rx_len);
+    fsk_arm();
+}
+
+int bk4819_fsk_send(const uint8_t *data, int len, int narrow)
+{
+    uint16_t r40 = bk4819_read(0x40), r2b = bk4819_read(0x2B);
+    int sent = 0;
+    if (fsk_modem == BK_FSK_OFF)
+        return 0;
+    bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) & ~(1u << 2)));   /* microphone off */
+    bk4819_write(0x40, (uint16_t)((r40 & 0xF000) | (narrow ? 1200 : 1300)));    /* deviation */
+    bk4819_write(0x2B, 0x0005);                 /* no TX 300 Hz high-pass, no pre-emphasis */
+    fsk_regs(1, len);
+    delay_ms(100);
+    for (int i = 0; i < len; i += 2)
+        bk4819_write(0x5F, (uint16_t)(data[i + 1] << 8 | data[i]));
+    bk4819_write(0x59, 0x0800 | 15u << 4 | 1u << 3);                    /* send */
+    uint32_t ms = (uint32_t)(16 + 4 + len) * 8 * 1000 / fsk_rate[fsk_modem] + 300;
+    for (uint32_t t = 0; t < ms && !sent; t += 5) {
+        delay_ms(5);
+        sent = (bk4819_irq() & 0x8000) != 0;   /* FSK TX finished */
+    }
+    delay_ms(100);
+    fsk_regs(0, fsk_rx_len);
+    bk4819_write(0x40, r40);
+    bk4819_write(0x2B, r2b);
+    return sent;
+}
+
+uint16_t bk4819_fsk_word(void)
+{
+    return bk4819_read(0x5F);
+}
+
+void bk4819_fsk_rearm(void)
+{
+    fsk_arm();
 }

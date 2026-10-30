@@ -11,7 +11,10 @@ logs every register access; --bkreg-at changes a register value at a time (a sig
 squelch, a frequency-counter result). The power switch (PF7) reads on until --switch-off-at.
 --flash serves an image of the external SPI flash (W25Q16 READ / JEDEC ID); erased otherwise.
 --signal-at puts a steady signal on a frequency (10 Hz units): while the BK4819 is tuned there its
-squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. Time is
+squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. --fsk-rx MS:HEX delivers an
+FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO), and an FSK send
+(REG_59 bit 11) finishes 430 ms after it starts. --pins PC15,PA13 logs those outputs among the
+BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -79,6 +82,8 @@ def main():
     ap.add_argument("--flash-out", help="save the flash image after the run (writes included)")
     ap.add_argument("--signal-at", action="append", default=[], type=int)
     ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
+    ap.add_argument("--fsk-rx", action="append", default=[],
+                    help="MS:HEX an FSK packet arrives (sync, a few FIFO words, then complete)")
     ap.add_argument("--hwver", default="02", help="board tag at 0x08000300 ('' for none)")
     ap.add_argument("--pins", default="", help="log changes of these outputs with --bk, e.g. PC15,PB0,PA13")
     args = ap.parse_args()
@@ -111,6 +116,15 @@ def main():
         bk_sched.append((int(when), int(reg, 0), int(val, 0)))
     bk_sched.sort()
     bklog = []
+    fsk = []                                # (ms, flags to hand out, words)
+    fifo = []                               # received words not read yet
+    fsk_tx = {"done_at": None}              # FSK send started (REG_59 bit 11): finished 430 ms later
+    for item in args.fsk_rx:
+        when, hx = item.split(":")
+        data = bytes.fromhex(hx).ljust(46, b"\0")
+        words = [data[i] | data[i + 1] << 8 for i in range(0, len(data), 2)]
+        fsk.append([int(when), [0x0002] + [0x1000] * 5 + [0x2000], words])
+    fsk.sort()
     ports = {"A": GPIOA, "B": GPIOB, "C": GPIOC, "F": GPIOF}
     watched = [(name, ports[name[1]], int(name[2:])) for name in args.pins.split(",") if name]
     flash = bytearray(open(args.flash, "rb").read()) if args.flash else bytearray()
@@ -162,7 +176,7 @@ def main():
         elif addr == GPIOA + 0x10:                                 # ISTAT: PTT on PA10, BK4819 SDA PA3
             v = 0xFFFF & ~(1 << 10 if "PTT" in pressed() else 0)
             bk = st["bk"]
-            if bk and bk["n"] >= 8 and bk["read"] and not bit_of(bk_value(bk["reg"]), 15 - bk["rd_n"]):
+            if bk and bk["n"] >= 8 and bk["read"] and not bit_of(bk["val"], 15 - bk["rd_n"]):
                 v &= ~(1 << 3)
             uc.mem_write(addr, struct.pack("<I", v))
         elif addr == GPIOF + 0x10:                                 # ISTAT: power switch PF7, high = off
@@ -171,6 +185,26 @@ def main():
             uc.mem_write(addr, struct.pack("<I", 0xFFFF))
 
     def bk_value(reg):
+        if fsk_tx["done_at"] is not None and st["ms"] >= fsk_tx["done_at"]:
+            if reg == 0x0C:
+                return bkregs.get(0x0C, 0) | 1
+            if reg == 0x02:
+                fsk_tx["done_at"] = None
+                return 0x8000
+        if fsk and fsk[0][0] <= st["ms"]:
+            pkt = fsk[0]
+            if reg == 0x0C:
+                return bkregs.get(0x0C, 0) | 1
+            if reg == 0x02:
+                if pkt[2]:
+                    fifo[:] = pkt[2]
+                    pkt[2] = []
+                flag = pkt[1].pop(0)
+                if not pkt[1]:
+                    fsk.pop(0)
+                return flag
+        if reg == 0x5F:
+            return fifo.pop(0) if fifo else 0
         tuned = bkregs.get(0x39, 0) << 16 | bkregs.get(0x38, 0)
         if tuned in args.signal_at and reg in (0x0C, 0x65):
             return (bkregs.get(0x0C, 0) | 0x0002) if reg == 0x0C else 10
@@ -190,9 +224,11 @@ def main():
             if bk["n"] == 24 and not bk["read"]:
                 val = bk["v"] & 0xFFFF
                 bkregs[bk["reg"]] = val
+                if bk["reg"] == 0x59 and val & 0x0800:
+                    fsk_tx["done_at"] = st["ms"] + 430
                 bklog.append((st["ms"], "W", bk["reg"], val))
             elif bk["read"]:
-                bklog.append((st["ms"], "R", bk["reg"], bk_value(bk["reg"])))
+                bklog.append((st["ms"], "R", bk["reg"], bk["val"]))
             st["bk"] = None
         bk = st["bk"]
         if bk is None or cs_now:
@@ -204,6 +240,8 @@ def main():
                 if bk["n"] == 8:
                     bk["read"] = bool(bk["v"] & 0x80)
                     bk["reg"] = bk["v"] & 0x7F
+                    if bk["read"]:
+                        bk["val"] = bk_value(bk["reg"])     # once per read: FIFO-like registers
                     bk["v"] = 0
             else:
                 bk["rd_n"] += 1

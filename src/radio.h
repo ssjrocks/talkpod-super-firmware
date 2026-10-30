@@ -15,7 +15,10 @@ int  radio_poll(void);                      /* every 20 ms; 1 when the audio ope
 int  radio_open(void);
 int  radio_rssi_dbm(void);
 void radio_mute(void);                      /* audio off until the next radio_tune() */
-void radio_audio_hold(int on);              /* keep received audio muted (a sound is playing) */
+enum { HOLD_VOICE = 1, HOLD_DATA = 2 };
+void radio_audio_hold(int who, int on);     /* keep received audio muted: a sound plays, data arrives */
+int  radio_narrow(void);
+void radio_retune(void);                    /* receive again on the tuned frequency (after a TX) */
 
 void radio_search_start(void);
 int  radio_search_poll(uint32_t *found);    /* every 50 ms; 1 with the frequency when settled */

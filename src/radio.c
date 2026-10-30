@@ -97,9 +97,9 @@ static void set_open(int on)
     board_led(0, on);
 }
 
-void radio_audio_hold(int on)
+void radio_audio_hold(int who, int on)
 {
-    hold = (uint8_t)on;
+    hold = (uint8_t)(on ? hold | who : hold & ~who);
     set_open(open);
 }
 
@@ -119,6 +119,16 @@ void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
 uint32_t radio_freq(void)
 {
     return freq;
+}
+
+void radio_retune(void)
+{
+    radio_tune(freq, am, narrow);
+}
+
+int radio_narrow(void)
+{
+    return narrow;
 }
 
 void radio_set_squelch(int l)
