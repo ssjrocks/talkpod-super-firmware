@@ -2,6 +2,8 @@
  *   r RR          read BK4819 register RR (hex)
  *   w RR VVVV     write it (hex); a REG_30 value with the PA gain bit (3) is refused: no transmit
  *   x ADDR LEN    hex dump of the external flash (hex address, decimal length up to 256)
+ *   X ADDR LEN    raw flash bytes (hex address, decimal length up to 65536), then their
+ *                 CRC-16/XMODEM, big-endian (tools/flash_backup.py)
  *   d             dump the main BK4819 registers and GPIO outputs
  *   f HZ          tune the selected slot (as VFO) to HZ
  *   s L           squelch level L (0-9)
@@ -75,6 +77,16 @@ static void hex2(uint8_t b)
 {
     debug_putc("0123456789ABCDEF"[b >> 4]);
     debug_putc("0123456789ABCDEF"[b & 15]);
+}
+
+static uint16_t crc16(uint16_t crc, const uint8_t *p, uint32_t n)
+{
+    while (n--) {
+        crc ^= (uint16_t)(*p++ << 8);
+        for (int i = 0; i < 8; i++)
+            crc = (uint16_t)(crc & 0x8000 ? crc << 1 ^ 0x1021 : crc << 1);
+    }
+    return crc;
 }
 
 static void print_reg(uint8_t reg)
@@ -195,6 +207,23 @@ void shell_poll(void)
             }
             debug_puts("\r\n");
         }
+        break;
+    }
+    case 'X': {
+        uint32_t addr = parse_num(&p, 16), len = parse_num(&p, 10);
+        uint8_t buf[64];
+        uint16_t crc = 0;
+        if (len > 65536)
+            len = 65536;
+        for (uint32_t off = 0; off < len; off += sizeof buf) {
+            uint32_t n = len - off < sizeof buf ? len - off : sizeof buf;
+            spiflash_read(addr + off, buf, n);
+            debug_write(buf, n);
+            crc = crc16(crc, buf, n);
+            fwdgt_feed();
+        }
+        debug_putc((char)(crc >> 8));
+        debug_putc((char)crc);
         break;
     }
     case 'd': {

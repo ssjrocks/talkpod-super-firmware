@@ -76,6 +76,7 @@ def main():
     ap.add_argument("--switch-off-at", type=int, default=10**9)
     ap.add_argument("--bkreg-at", action="append", default=[])
     ap.add_argument("--flash")
+    ap.add_argument("--flash-out", help="save the flash image after the run (writes included)")
     ap.add_argument("--signal-at", action="append", default=[], type=int)
     ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
     args = ap.parse_args()
@@ -107,7 +108,7 @@ def main():
     bk_sched.sort()
     bklog = []
     flash = bytearray(open(args.flash, "rb").read()) if args.flash else bytearray()
-    fl = {"cmd": [], "out": b"", "rx": 0}
+    fl = {"cmd": [], "out": b"", "rx": 0, "log": []}
     gram = [0] * (162 * 162)
     serial = bytearray()
     log = []
@@ -235,17 +236,41 @@ def main():
             st["cx"], st["cy"] = x, y
 
     def flash_byte(b):
-        """W25Q16 model: CS = PA4. READ 03 a2 a1 a0 and JEDEC ID 9F; erased (FF) elsewhere."""
+        """W25Q16 model: CS = PA4. READ 03, JEDEC ID 9F, status 05 (never busy), write enable 06,
+        page program 02 (bits only go 1 -> 0, wraps in the page), sector erase 20 (on CS high)."""
         if (st["octl"][GPIOA] >> 4) & 1:
             return 0xFF
         c = fl["cmd"]
         c.append(b)
         if c[0] == 0x9F:
             return [0xFF, 0x5E, 0x60, 0x15][min(len(c) - 1, 3)]
+        if c[0] == 0x05:
+            return 0x00
+        if c[0] == 0x06:
+            fl["wel"] = True
         if c[0] == 0x03 and len(c) > 4:
             a = (c[1] << 16 | c[2] << 8 | c[3]) + len(c) - 5
             return flash[a] if a < len(flash) else 0xFF
+        if c[0] == 0x02 and len(c) > 4 and fl.get("wel"):
+            base = c[1] << 16 | c[2] << 8 | c[3]
+            a = (base & ~0xFF) | ((base + len(c) - 5) & 0xFF)
+            if a >= len(flash):
+                flash.extend(b"\xff" * (a + 1 - len(flash)))
+            flash[a] &= b
+            fl["log"].append(("program", a))
         return 0xFF
+
+    def flash_cs_high():
+        c = fl["cmd"]
+        if c and c[0] == 0x20 and len(c) >= 4 and fl.get("wel"):
+            a = (c[1] << 16 | c[2] << 8 | c[3]) & ~0xFFF
+            if a + 0x1000 > len(flash):
+                flash.extend(b"\xff" * (a + 0x1000 - len(flash)))
+            flash[a:a + 0x1000] = b"\xff" * 0x1000
+            fl["log"].append(("erase", a))
+        if c and c[0] in (0x02, 0x20):
+            fl["wel"] = False
+        fl["cmd"] = []
 
     def on_write(uc, access, addr, size, value, _):
         if addr == SPI0 + 0x0C:
@@ -261,13 +286,13 @@ def main():
             st["octl"][port] = (st["octl"][port] | (value & 0xFFFF)) & ~(value >> 16)
             bk_pins(ba, bc)
             if (st["octl"][GPIOA] >> 4) & 1:
-                fl["cmd"] = []
+                flash_cs_high()
         elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x28:                         # BC
             ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x28] &= ~(value & 0xFFFF)
             bk_pins(ba, bc)
             if (st["octl"][GPIOA] >> 4) & 1:
-                fl["cmd"] = []
+                flash_cs_high()
         elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x14:                         # OCTL
             ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x14] = value & 0xFFFF
@@ -298,6 +323,12 @@ def main():
         visible = [gram[y * 162 + x + X_OFFSET] for y in range(128) for x in range(128)]
         write_png(args.png, visible, 128, 128, 3)
         print(f"LCD image: {args.png}")
+    if fl["log"]:
+        progs = sorted({a & ~0x1F for k, a in fl["log"] if k == "program"})
+        erases = [hex(a) for k, a in fl["log"] if k == "erase"]
+        print(f"flash writes: records at {[hex(a) for a in progs][:8]}, erases {erases}")
+    if args.flash_out:
+        open(args.flash_out, "wb").write(flash)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Disassemble a decrypted stock image (loaded at 0x08000400), annotating literal-pool loads.
 
-usage: dis.py STOCK.plain.bin ADDR[:COUNT] ...      COUNT instructions (default 40), linear
-       dis.py STOCK.plain.bin --calls FUNC ...       every call to FUNC with constant r0-r3
+usage: stockdis.py STOCK.plain.bin ADDR[:COUNT] ...      COUNT instructions (default 40), linear
+       stockdis.py STOCK.plain.bin --calls FUNC ...       every call to FUNC with constant r0-r3
 """
 import re
 import struct

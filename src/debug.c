@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "debug.h"
+#include "gd32f3x0.h"
 
 /* USART0 on PA9 (TX) / PA10 (RX, shared with PTT). The AT32F421 USART has the older register
    layout (STAT, DATA, BAUD, CTL0 at +0, +4, +8, +C), not GD32F3x0's, so it is driven directly. The
@@ -22,13 +23,37 @@
 
 #define CLOCK_HZ 48000000U
 
+/* Received bytes go into a ring buffer from the interrupt: the receive register holds one byte
+   (174 us at 57600 baud), and the main loop is often busier than that (LCD drawing, retuning), which
+   lost command characters while bytes were polled. */
+static volatile uint8_t rx_buf[256];
+static volatile uint8_t rx_head, rx_tail;
+static volatile uint32_t rx_count;
+
 void debug_init(uint32_t baud)
 {
     uint32_t t = 1000000;
     while (!(USART0_STAT & STAT_TC) && --t) {}     /* let anything in flight finish */
     USART0_CTL0 &= ~CTL0_UEN;
     USART0_BAUD = (CLOCK_HZ + baud / 2) / baud;    /* 48 MHz / 57600 = 833 */
-    USART0_CTL0 = (USART0_CTL0 & ~CTL0_RBNEIE) | CTL0_UEN;
+    USART0_CTL0 |= CTL0_RBNEIE | CTL0_UEN;
+    NVIC_EnableIRQ(USART0_IRQn);                    /* runs once interrupts are enabled */
+}
+
+void USART0_IRQHandler(void)
+{
+    uint32_t st = USART0_STAT;
+    if (st & (STAT_RBNE | STAT_ORERR)) {
+        uint8_t c = (uint8_t)USART0_DATA;          /* reading STAT then DATA clears the flags */
+        if (!(st & STAT_RBNE) || (c == 0 && (st & STAT_FERR)))
+            return;                                 /* an overrun, or a break: PTT pulls RX low */
+        uint8_t next = (uint8_t)(rx_head + 1);
+        if (next != rx_tail) {
+            rx_buf[rx_head] = c;
+            rx_head = next;
+        }
+        rx_count++;
+    }
 }
 
 void debug_putc(char c)
@@ -46,23 +71,13 @@ void debug_flush(void)
     while (!(USART0_STAT & STAT_TC) && --timeout) {}
 }
 
-static volatile uint32_t rx_count;
-
 int debug_getc(void)
 {
-    uint32_t st = USART0_STAT;
-    if (st & STAT_ORERR) {          /* overrun: reading STAT then DATA clears it */
-        (void)USART0_DATA;
+    if (rx_tail == rx_head)
         return -1;
-    }
-    if (st & STAT_RBNE) {
-        int c = (int)(USART0_DATA & 0xFF);
-        if (c == 0 && (st & STAT_FERR))
-            return -1;              /* a break: PTT pulls RX low (keypad.c), not a byte */
-        rx_count++;
-        return c;
-    }
-    return -1;
+    int c = rx_buf[rx_tail];
+    rx_tail = (uint8_t)(rx_tail + 1);
+    return c;
 }
 
 uint32_t debug_rx_count(void)

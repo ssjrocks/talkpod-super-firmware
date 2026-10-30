@@ -14,12 +14,12 @@
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.91";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.92";
 
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.91 ===\r\nbootloader tag ");
+    debug_puts("\r\n=== A36SE FW v0.92 ===\r\nbootloader tag ");
     debug_write((const uint8_t *)0x08000300U, 7);
     debug_puts("\r\n");
 

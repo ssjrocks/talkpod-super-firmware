@@ -1,9 +1,16 @@
-/* W25Q16 on SPI0 (PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI, AF0), mode 0, 12 MHz. Read-only. */
+/* W25Q16 on SPI0 (PA4 CS, PA5 SCK, PA6 MISO, PA7 MOSI, AF0), mode 0, 12 MHz. Writes are limited
+   to FLASH_OWN_START..FLASH_OWN_END. */
 #include "spiflash.h"
 #include "board.h"
+#include "system.h"
 
-#define CMD_READ      0x03
-#define CMD_JEDEC_ID  0x9F
+#define CMD_READ          0x03
+#define CMD_JEDEC_ID      0x9F
+#define CMD_WRITE_ENABLE  0x06
+#define CMD_READ_STATUS   0x05
+#define CMD_PAGE_PROGRAM  0x02
+#define CMD_SECTOR_ERASE  0x20
+#define PAGE              256U
 
 static uint8_t xfer(uint8_t b)
 {
@@ -69,4 +76,73 @@ void spiflash_read(uint32_t addr, void *dst, uint32_t len)
     while (len--)
         *p++ = xfer(0);
     select(0);
+}
+
+static int own(uint32_t addr, uint32_t len)
+{
+    return FLASH_WRITES && addr >= FLASH_OWN_START && len <= FLASH_OWN_END - addr;
+}
+
+static void command(uint8_t cmd, uint32_t addr, int with_addr)
+{
+    select(1);
+    xfer(cmd);
+    if (with_addr) {
+        xfer((uint8_t)(addr >> 16));
+        xfer((uint8_t)(addr >> 8));
+        xfer((uint8_t)addr);
+    }
+}
+
+/* sector erase takes up to 400 ms, a page program up to 3 ms */
+static int wait_ready(uint32_t timeout_ms)
+{
+    uint32_t t0 = millis();
+    select(1);
+    xfer(CMD_READ_STATUS);
+    while (xfer(0) & 1) {
+        if (millis() - t0 > timeout_ms) {
+            select(0);
+            return 0;
+        }
+        fwdgt_feed();
+    }
+    select(0);
+    return 1;
+}
+
+int spiflash_erase(uint32_t addr)
+{
+    addr &= ~(FLASH_SECTOR - 1);
+    if (!own(addr, FLASH_SECTOR))
+        return 0;
+    command(CMD_WRITE_ENABLE, 0, 0);
+    select(0);
+    command(CMD_SECTOR_ERASE, addr, 1);
+    select(0);
+    return wait_ready(1000);
+}
+
+int spiflash_write(uint32_t addr, const void *src, uint32_t len)
+{
+    const uint8_t *p = src;
+    if (!own(addr, len))
+        return 0;
+    while (len) {
+        uint32_t n = PAGE - (addr & (PAGE - 1));    /* a program must not cross a page */
+        if (n > len)
+            n = len;
+        command(CMD_WRITE_ENABLE, 0, 0);
+        select(0);
+        command(CMD_PAGE_PROGRAM, addr, 1);
+        for (uint32_t i = 0; i < n; i++)
+            xfer(p[i]);
+        select(0);
+        if (!wait_ready(20))
+            return 0;
+        addr += n;
+        p += n;
+        len -= n;
+    }
+    return 1;
 }

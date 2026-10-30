@@ -20,6 +20,7 @@
 #include "scan.h"
 #include "system.h"
 #include "watch.h"
+#include "settings.h"
 
 #define C_BG     RGB(8, 10, 18)
 #define C_PANEL  RGB(26, 32, 48)
@@ -199,10 +200,19 @@ static void draw_slot(int i)
     int cw = gfx_text_width(&font_6x10, chip) + 4;
     gfx_rrect(5, y + 3, cw, 12, chip_bg);
     gfx_text(7, y + 4, &font_6x10, chip, chip_fg, chip_bg);
-    gfx_text(cw + 9, y + 2, &font_7x13b, name, sel ? C_TEXT : C_DIM, bg);
-    char mode[8];
+    char mode[8], fit[13];
     put_str(put_str(mode, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
-    gfx_text(122 - gfx_text_width(&font_5x8, mode), y + 5, &font_5x8, mode, C_DIM, bg);
+    int mx = 122 - gfx_text_width(&font_5x8, mode);
+    int room = mx - 3 - (cw + 9);                           /* the name stops short of the marks */
+    const font_t *nf = gfx_text_width(&font_7x13b, name) <= room ? &font_7x13b : &font_6x10;
+    int n = 0;
+    while (n < room / nf->w && n < 12 && name[n]) {
+        fit[n] = name[n];
+        n++;
+    }
+    fit[n] = 0;
+    gfx_text(cw + 9, y + (nf == &font_7x13b ? 2 : 4), nf, fit, sel ? C_TEXT : C_DIM, bg);
+    gfx_text(mx, y + 5, &font_5x8, mode, C_DIM, bg);
 
     if (sel && entry_len) {
         draw_entry(y, bg);
@@ -310,7 +320,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.91", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.92", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -696,11 +706,92 @@ static void key_menu(const key_event_t *ev)
 
 /* ---- entry points -------------------------------------------------------------------------- */
 
+/* ---- saved settings ------------------------------------------------------------------------- */
+
+typedef struct __attribute__((packed)) {
+    struct __attribute__((packed)) {
+        uint8_t is_channel, flags;      /* flags: 1 VFO AM, 2 VFO narrow, 4 low power */
+        uint16_t channel;
+        uint32_t vfo;
+    } slot[2];
+    uint8_t selected, dual, squelch, step, backlight;
+} saved_t;
+
+static saved_t saved;                   /* what flash holds now */
+static uint32_t next_save_check;
+
+static void gather(saved_t *v)
+{
+    memset(v, 0, sizeof *v);
+    for (int i = 0; i < 2; i++) {
+        slot_t *s = watch_slot(i);
+        v->slot[i].is_channel = s->is_channel;
+        v->slot[i].flags = (uint8_t)(s->vfo_am | s->vfo_narrow << 1 | s->low_power << 2);
+        v->slot[i].channel = s->channel;
+        v->slot[i].vfo = s->vfo;
+    }
+    v->selected = (uint8_t)watch_selected();
+    v->dual = (uint8_t)watch_dual();
+    v->squelch = (uint8_t)radio_squelch();
+    v->step = step;
+    v->backlight = backlight;
+}
+
+static void apply(const saved_t *v)
+{
+    channel_t ch;
+    for (int i = 0; i < 2; i++) {
+        slot_t *s = watch_slot(i);
+        if (v->slot[i].vfo >= 1800000 && v->slot[i].vfo <= 130000000)
+            s->vfo = v->slot[i].vfo;
+        s->vfo_am = v->slot[i].flags & 1;
+        s->vfo_narrow = (v->slot[i].flags >> 1) & 1;
+        if (channel_read(v->slot[i].channel, &ch))
+            s->channel = v->slot[i].channel;
+        s->is_channel = v->slot[i].is_channel && channel_read(s->channel, &ch);
+        s->freq = 0;                    /* so watch_update() takes the channel's power... */
+        watch_update(i);
+        s->low_power = (v->slot[i].flags >> 2) & 1;    /* ...and then the saved one wins */
+    }
+    if (v->squelch < 10)
+        radio_set_squelch(v->squelch);
+    if (v->step < STEP_COUNT)
+        step = v->step;
+    if (v->backlight < 4)
+        backlight = v->backlight;
+    watch_set_dual(v->dual != 0);
+    watch_select(v->selected & 1);
+}
+
+/* saved 3 s after the last change, never mid-scan or mid-search */
+static void save_if_changed(uint32_t now)
+{
+    saved_t v;
+    if ((int32_t)(now - next_save_check) < 0)
+        return;
+    next_save_check = now + 1000;
+    if (searching || scan_mode() != SCAN_OFF || entry_len || now - last_key < 3000)
+        return;
+    gather(&v);
+    if (memcmp(&v, &saved, sizeof v) == 0)
+        return;
+    if (settings_save(&v, sizeof v))
+        saved = v;
+    else
+        debug_puts("settings: save failed\r\n");
+}
+
 void ui_init(void)
 {
+    saved_t v;
     if (radio_squelch() == 0)
         radio_set_squelch(1);           /* 0 is always open, which leaves dual watch on slot A */
     watch_init();
+    if (settings_load(&v, sizeof v)) {
+        apply(&v);
+        debug_puts("settings loaded\r\n");
+    }
+    gather(&saved);
     last_key = millis();
     apply_backlight(1);
     draw_main();
@@ -795,6 +886,7 @@ void ui_tick(void)
         next_status = now + 5000;
         draw_status();
     }
+    save_if_changed(now);
     if (backlight_s[backlight] && light_on && !radio_open() &&
         now - last_key > (uint32_t)backlight_s[backlight] * 1000)
         apply_backlight(0);

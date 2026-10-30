@@ -133,3 +133,16 @@ static and stopped scans. A signal reads noise 8-32. The 480.000 MHz spur (10th 
 The firmware now lowers the wide noise threshold by 15 and tightens noise by 3 and RSSI by 3 dB per
 level above 1 (narrow level 1 = stock): wide level 1 then had 0 false opens in 900 steps, and a
 strong signal opened levels 1 and 9 in both bandwidths after 65 ms.
+
+## Flash usage (2 MB backup of 2026-10-30, after the radio's use with stock firmware)
+
+Per 64 KB block, share of bytes not erased: 0x000000 19%, 0x010000 44%, 0x020000-0x08FFFF 97-99%
+(splash, icons, fonts), 0x090000 47%, 0x09E000-0x10FFFF erased, 0x110000-0x18FFFF 98-99% (voice
+prompts; index at 0x10FF80), 0x190000-0x191FFF used, 0x192000-0x1EFFFF erased, 0x1F0000-0x1F1FFF
+used, rest erased. Stock can erase 4 KB / 32 KB / 64 KB / the whole chip (0x800b88c, 0x800b780,
+0x800b7de, 0x800b844) and program pages (0x800ba24); its addresses are computed at run time.
+
+This firmware writes only to 0x1A0000-0x1EFFFF (drivers/spiflash.h refuses anything else):
+0x1A0000-0x1DFFFF boot splash, 0x1E0000 settings (32-byte records, newest valid wins).
+The backup is in backups/ (not in git) and can be restored with a stock-firmware tool or a future
+restore command.

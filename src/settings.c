@@ -1,0 +1,74 @@
+#include <string.h>
+#include "settings.h"
+#include "spiflash.h"
+
+/* record: u16 magic, u8 length, u8 0, payload (zero-padded to 26 bytes), u16 CRC-16/XMODEM of the
+   first 30 bytes. A record cut short by power loss fails the CRC and is skipped. */
+#define BASE    FLASH_SETTINGS
+#define REC     32
+#define RECORDS (FLASH_SECTOR / REC)
+#define MAGIC   0xA36C
+
+static uint16_t crc16(const uint8_t *p, uint32_t n)
+{
+    uint16_t crc = 0;
+    while (n--) {
+        crc ^= (uint16_t)(*p++ << 8);
+        for (int i = 0; i < 8; i++)
+            crc = (uint16_t)(crc & 0x8000 ? crc << 1 ^ 0x1021 : crc << 1);
+    }
+    return crc;
+}
+
+static int erased(const uint8_t *r)
+{
+    for (int i = 0; i < REC; i++)
+        if (r[i] != 0xFF)
+            return 0;
+    return 1;
+}
+
+int settings_load(void *dst, uint32_t len)
+{
+    uint8_t r[REC];
+    int found = 0;
+    if (len > SETTINGS_MAX)
+        return 0;
+    for (uint32_t i = 0; i < RECORDS; i++) {
+        spiflash_read(BASE + i * REC, r, REC);
+        if (erased(r))
+            break;
+        if ((r[0] | r[1] << 8) == MAGIC && r[2] == len && crc16(r, REC - 2) == (r[30] | r[31] << 8)) {
+            memcpy(dst, r + 4, len);
+            found = 1;
+        }
+    }
+    return found;
+}
+
+int settings_save(const void *src, uint32_t len)
+{
+    uint8_t r[REC];
+    uint32_t i;
+    if (len > SETTINGS_MAX)
+        return 0;
+    for (i = 0; i < RECORDS; i++) {
+        spiflash_read(BASE + i * REC, r, REC);
+        if (erased(r))
+            break;
+    }
+    if (i == RECORDS) {
+        if (!spiflash_erase(BASE))
+            return 0;
+        i = 0;
+    }
+    memset(r, 0, sizeof r);
+    r[0] = MAGIC & 0xFF;
+    r[1] = MAGIC >> 8;
+    r[2] = (uint8_t)len;
+    memcpy(r + 4, src, len);
+    uint16_t crc = crc16(r, REC - 2);
+    r[30] = (uint8_t)crc;
+    r[31] = (uint8_t)(crc >> 8);
+    return spiflash_write(BASE + i * REC, r, REC);
+}
