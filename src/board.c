@@ -24,11 +24,12 @@ void board_init(void)
     rcu_periph_clock_enable(RCU_GPIOC);
     rcu_periph_clock_enable(RCU_GPIOF);
 
-    /* power hold: drive it high before making it an output, so it never glitches low */
-    gpio_bit_set(POWER_HOLD_PORT, POWER_HOLD_PIN);
-    gpio_mode_set(POWER_HOLD_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, POWER_HOLD_PIN);
+    /* PA15 is left as the bootloader set it (output, low): stock never sets it, only clears it
+       before its power-off reset. v0.6 drove it high, and no audio came out of the speaker. */
     gpio_mode_set(POWER_SENSE_PORT, GPIO_MODE_INPUT, GPIO_PUPD_PULLUP, POWER_SENSE_PIN);
 
+    gpio_bit_reset(MIC_EN_PORT, MIC_EN_PIN);
+    gpio_mode_set(MIC_EN_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, MIC_EN_PIN);
     gpio_bit_reset(LED_PORT, LED_RED_PIN | LED_GREEN_PIN);
     gpio_mode_set(LED_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_RED_PIN | LED_GREEN_PIN);
     gpio_bit_reset(RF_PB_PORT, RF_PB0_PIN | RF_PB1_PIN);
@@ -39,7 +40,8 @@ void board_init(void)
 
 /* Stock 0x8008710 for RX and off. Band parity is all RX needs: even (below 300 MHz, airband
    included) uses one front end, odd (300 MHz and up) the other. Transmit paths are left out on
-   purpose until TX is written. On HWVER02 stock also sets a TMR3 PWM for the even band; not done. */
+   purpose until TX is written. On HWVER02 stock drives PB1 as TMR3 CH4 PWM (period 256) and sets
+   it to 255 for even-band RX, 0 when off; a steady high stands in for 255/256 here. */
 void board_rf_path(uint32_t freq_10hz, int mode)
 {
     int uhf = freq_10hz >= 30000000U;
@@ -54,8 +56,17 @@ void board_rf_path(uint32_t freq_10hz, int mode)
         gpio_bit_set(RF_PC_PORT, RF_PC14_PIN);
     } else {
         gpio_bit_reset(RF_PC_PORT, RF_PC14_PIN);
-        gpio_bit_set(RF_PB_PORT, rx_even);
+        gpio_bit_set(RF_PB_PORT, hwver2 ? (RF_PB0_PIN | RF_PB1_PIN) : rx_even);
     }
+}
+
+/* PA12 enables the speaker amplifier (stock 0x800b6e0, reference-counted over its audio sources) */
+void board_speaker(int on)
+{
+    if (on)
+        gpio_bit_set(MIC_EN_PORT, MIC_EN_PIN);
+    else
+        gpio_bit_reset(MIC_EN_PORT, MIC_EN_PIN);
 }
 
 void board_led(int red, int green)
@@ -70,8 +81,8 @@ void board_led(int red, int green)
         gpio_bit_reset(LED_PORT, LED_GREEN_PIN);
 }
 
-/* As stock: the switch reads off (high) for 50 ms -> release the power hold, and if something
-   else (a charger) still powers us 500 ms later, restart. Only after the switch has been seen on
+/* As stock: the switch reads off (high) for 50 ms -> clear PA15, and if we are still powered
+   500 ms later (a charger), restart. Only after the switch has been seen on
    once, so a misread pin can't switch the radio off at every start. */
 void board_power_poll(void)
 {

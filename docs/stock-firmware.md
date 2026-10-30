@@ -28,17 +28,18 @@ between the two (below).
 | PA8 | output; set 10 ms after the BK1080 powers up (FM broadcast), cleared when leaving it |
 | PA9, PA10 | USART0 TX, RX. PA10 is also PTT (low = pressed) |
 | PA11 | output; set when a voice prompt starts playing (from SPI flash via TMR1 + DMA) |
-| PA12 | output (Jamie793: MIC_EN) |
+| PA12 | **speaker amplifier enable**, high = on (confirmed on the radio). Stock 0x800b6e0(n) keeps a flag per audio source (odd n on, even n off) and drives PA12 high while any is set; Jamie793 called it MIC_EN |
 | PA13, PA14 | LEDs, driven by 0x8006a30 / 0x8006a04 (0 off, 1 on, 2 toggle). PA14 turns on when a signal opens the squelch (green) |
-| PA15 | **power hold**: cleared (then 500 ms, then reset) to switch the radio off |
-| PF7 | **power switch sense**, input with pull-up: high for 50 ms means switched off |
+| PA15 | output, left low by the bootloader; stock never sets it, only clears it before its power-off reset. Not a power hold (driving it high changed nothing useful); role unknown |
+| PF7 | power switch sense, input with pull-up: low while on, high for 50 ms means switched off (the knob also cuts power itself) |
 | PF6 | BK1080 SCL |
 | PB0, PB1, PC14, PC15 | RF path switches (below) |
 | PB2, PB7, PB10, PB12, PB13, PB15 | LCD CS, backlight, DC, RST, SCK, MOSI |
 | PB3-PB6 / PB8, PB9, PB11, PB14 | key rows / columns (columns with pull-ups) |
 
-No MCU pin is switched when received audio is unmuted (0x8008ac0: LED, REG_47, RF path only); the
-speaker amplifier enable is not identified yet.
+Received audio is unmuted by 0x8008ac0: green LED, REG_47 = FM, speaker on (0x800b6e0(5): PA12),
+RF path. **With the programming cable plugged into the speaker/mic jack the internal speaker is
+cut off**: test audio with the cable unplugged.
 
 ## Band index (0x8001ed4)
 
@@ -70,6 +71,9 @@ Init 0x800842c: 00=8000, 00=0000, 37=1D0F, 13=03BE, 12=037B, 11=027B, 10=007A, 1
 REG_30 by 0x800989c(mode) (written 0 or 0x0200 first): 0 = 0x0000 off, 1 = 0xBFF1 RX,
 2 = 0xC1FE TX, 3 = 0x0302 local tone/beep, 4 = 0xC3FA TX of a generated tone (no mic).
 
+RX on (0x8004980): speaker off, REG_47 mute, LED off, 30=0000, **28=6B38** (RX audio expander;
+init leaves 6B00), 30=0200, 30=BFF1, RF path.
+
 RX start 0x80097d0 (channel without tones): 37=1F0F, 30=0000, 38/39 = freq in 10 Hz (low/high
 word), 43 = 3028 wide / 4048 narrow, 78 = squelch thresholds (from calibration tables in RAM at
 0x200000b4, per band), 4F=0000, 51=9000, 07=0471, 07=21CD, 52=0292, 30=0200, 30=BFF1.
@@ -80,6 +84,9 @@ tones), 0x80093a0 (REG_7D mic gain), REG_30 mode 2, 0x800961c.
 Audio output 0x8009a40(type): REG_47 = 0x6040 | table[type] << ... giving 6040 mute, 6140 FM,
 6340 beep; FM becomes 6740 (**AM**) when the channel modulation byte (0x200000a4) is 6.
 REG_48 = 0xB00F | (gain & 0x3F) << 4 (init uses 0xB3FF).
+
+Sleep/standby 0x800bda4: BK4819 init, RF path off, 30=0000, 37=1D00 (BK4819 powered down), RTC
+wake-up set up, MCU into standby.
 
 Other: RSSI read REG_67 (0x80086b0), status REG_0C (0x80086c2 ...), frequency scan result REG_0D/0E
 (0x8009434), CTCSS/DCS scan results REG_68/69/6A (0x800955c), squelch REG_78/4F (0x80098f4), TX

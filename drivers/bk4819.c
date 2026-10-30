@@ -113,6 +113,8 @@ void bk4819_rx(uint32_t freq_10hz, int narrow)
     bk4819_write(0x07, 0x0471);
     bk4819_write(0x07, 0x21CD);
     bk4819_write(0x52, 0x0292);
+    bk4819_write(0x30, 0x0000);
+    bk4819_write(0x28, 0x6B38);                  /* RX audio expander, as stock 0x8004980 */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xBFF1);                  /* RX: VCO cal, RX link, AF DAC, PLL, RX DSP */
 }
@@ -137,4 +139,21 @@ void bk4819_gpio(uint8_t mask, int on)
 {
     uint16_t v = bk4819_read(0x33) & (uint16_t)~(mask << 8);   /* output enabled */
     bk4819_write(0x33, on ? (v | mask) : (v & (uint16_t)~mask));
+}
+
+/* Stock 0x8009bd8(0): tone 1 to the local speaker only (REG_30 mode 3: no PLL, no PA). Mode 4,
+   which stock uses with a non-zero argument, transmits the tone and is not used here. */
+void bk4819_beep(int on, uint16_t hz)
+{
+    if (on) {
+        bk4819_write(0x71, (uint16_t)((uint32_t)hz * 103244U / 10000U));   /* Hz * 10.3244 */
+        bk4819_write(0x70, (uint16_t)((bk4819_read(0x70) & ~0x8F00) | 0xBC00));
+        bk4819_write(0x30, 0x0000);
+        bk4819_write(0x30, 0x0302);
+        bk4819_write(0x47, 0x6340);
+        bk4819_write(0x48, 0xB8F5);
+    } else {
+        bk4819_write(0x70, 0x0000);
+        bk4819_write(0x48, 0xB3FF);
+    }
 }

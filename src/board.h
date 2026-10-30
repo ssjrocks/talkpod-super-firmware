@@ -62,14 +62,14 @@
 #define LED_RED_PIN     GPIO_PIN_13     /* TX (assumed: the other one lights on RX) */
 #define LED_GREEN_PIN   GPIO_PIN_14     /* lit by stock when a signal opens the squelch */
 #define POWER_HOLD_PORT GPIOA
-#define POWER_HOLD_PIN  GPIO_PIN_15     /* high keeps the radio powered */
+#define POWER_HOLD_PIN  GPIO_PIN_15     /* bootloader leaves it low; stock clears it before power-off */
 #define POWER_SENSE_PORT GPIOF
 #define POWER_SENSE_PIN GPIO_PIN_7      /* high = power switch turned off */
 
 /* Misc */
 #define BATTERY_PORT    GPIOA
 #define BATTERY_PIN     GPIO_PIN_1      /* ADC */
-#define MIC_EN_PORT     GPIOA
+#define MIC_EN_PORT     GPIOA           /* speaker amplifier enable (Jamie793 called it MIC_EN) */
 #define MIC_EN_PIN      GPIO_PIN_12
 #define AUX_PA8_PIN     GPIO_PIN_8      /* stock: set with the BK1080 (FM broadcast) */
 #define AUX_PA11_PIN    GPIO_PIN_11     /* stock: set when a voice prompt plays */
@@ -89,6 +89,7 @@ void board_init(void);
 int  board_hwver2(void);                    /* bootloader tag "HWVER02" at 0x08000300 */
 void board_rf_path(uint32_t freq_10hz, int mode);
 void board_led(int red, int green);
+void board_speaker(int on);
 void board_power_poll(void);                /* every 10 ms: powers off when the switch is off */
 
 #endif

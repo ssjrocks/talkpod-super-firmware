@@ -18,6 +18,9 @@ static const char MAGIC[] = "PROGRAMJC37U";
 /* Not a stock fingerprint, so CHIRP / Talkpod Manager won't mistake us for stock firmware. */
 static const uint8_t IDENT[8] = {'A', '3', '6', 'C', 'F', 'W', '0', '1'};
 
+/* Bytes that aren't programming traffic also go to a line-based debug shell, if one is linked in. */
+void shell_input(char c) __attribute__((weak));
+
 static char window[12];
 static uint8_t in_prog;
 static uint8_t upd_len;
@@ -58,6 +61,8 @@ void progmode_poll(void)
                 continue;
             }
         }
+        if (shell_input)
+            shell_input((char)c);
         memmove(window, window + 1, sizeof window - 1);
         window[sizeof window - 1] = (char)c;
         if (memcmp(window, MAGIC, sizeof window) == 0) {

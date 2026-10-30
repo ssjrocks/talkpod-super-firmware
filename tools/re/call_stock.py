@@ -15,8 +15,8 @@ import argparse
 import struct
 import sys
 
-from unicorn import (UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE, UC_MODE_MCLASS,
-                     UC_MODE_THUMB, Uc, UcError)
+from unicorn import (UC_ARCH_ARM, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE,
+                     UC_MODE_MCLASS, UC_MODE_THUMB, Uc, UcError)
 from unicorn.arm_const import (UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,
                                UC_ARM_REG_R3, UC_ARM_REG_SP, UC_CPU_ARM_CORTEX_M4)
 
@@ -45,7 +45,8 @@ def main():
     uc = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
     uc.ctl_set_cpu_model(UC_CPU_ARM_CORTEX_M4)
     for base, size in ((0x08000000, 0x10000), (0x20000000, 0x4000), (0x40000000, 0x30000),
-                       (0x48000000, 0x2000), (0xE0000000, 0x100000), (0x1FFFF000, 0x1000)):
+                       (0x48000000, 0x2000), (0xE0000000, 0x100000), (0x1FFFF000, 0x1000),
+                       (0x42000000, 0x600000), (0x22000000, 0x80000)):     # bit-band aliases
         uc.mem_map(base, size)
     uc.mem_write(0x08000400, fw)
     uc.mem_write(SENTINEL, b"\xfe\xe7")      # b .
@@ -76,6 +77,16 @@ def main():
         elif addr in DELAYS:
             ret(uc)
 
+    def on_bitband(uc, access, addr, size, value, _):
+        region = 0x40000000 if addr >= 0x42000000 else 0x20000000
+        alias = addr - (0x42000000 if addr >= 0x42000000 else 0x22000000)
+        target, bit = region + (alias >> 5 & ~3), (alias >> 2) & 31
+        word = struct.unpack("<I", uc.mem_read(target, 4))[0]
+        word = (word | (1 << bit)) if value & 1 else (word & ~(1 << bit))
+        uc.mem_write(target, struct.pack("<I", word))
+        if region == 0x40000000:
+            print(f"BITBAND 0x{target:08X} bit {bit} = {value & 1}")
+
     def on_write(uc, access, addr, size, value, _):
         port = addr & ~0x3FF
         off = addr & 0x3FF
@@ -98,8 +109,19 @@ def main():
         elif 0x40000000 <= addr < 0x40030000:
             print(f"PERIPH W 0x{addr:08X} = 0x{value:X} ({size} bytes)")
 
+    # status registers read as "ready" so polling loops finish: SPI0/1 TBE|RBNE, ADC conversion
+    # done, USART TX empty, flash controller idle
+    READY = {0x40013008: 0x03, 0x40003808: 0x03, 0x40012400: 0x1F, 0x40013800: 0xC0, 0x4002200C: 0x00}
+
+    def on_read(uc, access, addr, size, value, _):
+        if addr in READY:
+            uc.mem_write(addr, struct.pack("<I", READY[addr]))
+
+    uc.hook_add(UC_HOOK_MEM_READ, on_read, begin=0x40000000, end=0x4002FFFF)
     uc.hook_add(UC_HOOK_CODE, on_code)
     uc.hook_add(UC_HOOK_MEM_WRITE, on_write, begin=0x40000000, end=0x48001FFF)
+    uc.hook_add(UC_HOOK_MEM_WRITE, on_bitband, begin=0x42000000, end=0x425FFFFF)
+    uc.hook_add(UC_HOOK_MEM_WRITE, on_bitband, begin=0x22000000, end=0x2207FFFF)
     uc.hook_add(UC_HOOK_MEM_UNMAPPED, lambda uc, acc, addr, s, v, _: print(f"!! unmapped 0x{addr:08X}") or False)
     regs = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)
     for r, v in zip(regs, a.args):

@@ -13,5 +13,6 @@ void     bk4819_off(void);                      /* REG_30 = 0: receiver and tran
 void     bk4819_af(int type);                   /* audio output: mute, FM or AM */
 int      bk4819_rssi_dbm(void);
 void     bk4819_gpio(uint8_t mask, int on);     /* the BK4819's own GPIO pins (REG_33) */
+void     bk4819_beep(int on, uint16_t hz);      /* local tone; after it, call bk4819_rx() again */
 
 #endif
