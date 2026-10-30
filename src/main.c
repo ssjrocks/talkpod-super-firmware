@@ -6,11 +6,15 @@
 #include "gfx.h"
 #include "keypad.h"
 #include "bk4819.h"
+#include "spiflash.h"
+#include "radio.h"
+#include "scan.h"
+#include "channels.h"
 
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.72";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.8";
 
 #define C_BG     RGB(0, 0, 0)
 #define C_BAR    RGB(0, 40, 110)
@@ -20,15 +24,15 @@ const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V
 #define C_OPEN   RGB(0, 200, 60)
 #define C_SHUT   RGB(50, 50, 50)
 #define C_RSSI   RGB(0, 160, 255)
+#define C_BUSY   RGB(200, 120, 0)
 
-/* Receive test bench: tune, watch RSSI, beep, and poke the audio path from the serial shell. */
-static uint32_t freq = 47690000;            /* 10 Hz units: UHF CB channel 11 */
-static const uint32_t steps[] = {1250, 10000, 100000};      /* 12.5 kHz, 100 kHz, 1 MHz */
-static const char *const step_names[] = {"12.5k", "100k", "1M"};
-static uint8_t step, am, narrow, monitor, open, tone_on;
-static int squelch = -115;                  /* dBm */
-static const uint32_t aux_pins[3] = {AUX_PA11_PIN, MIC_EN_PIN, AUX_PA8_PIN};
-static uint8_t aux[3];
+/* Receive test bench: VFO and channels, squelch, search, scan. The real UI comes later. */
+static uint32_t vfo = 47690000;             /* 10 Hz units: UHF CB channel 11 */
+static const uint32_t steps[] = {250, 500, 625, 1250, 2500, 10000, 100000};
+static const char *const step_names[] = {"2.5k", "5k", "6.25k", "12.5k", "25k", "100k", "1M"};
+static uint8_t step = 3, am, narrow, ch_mode, searching, tone_on;
+static int channel = 1;
+static char ch_name[13];
 
 static void dec(char *out, int v)
 {
@@ -47,6 +51,14 @@ static void dec(char *out, int v)
     *out = 0;
 }
 
+static char *append(char *d, const char *s)
+{
+    while (*s)
+        *d++ = *s++;
+    *d = 0;
+    return d;
+}
+
 static void field(int x, int y, int width, const char *s, uint16_t fg)
 {
     int end = gfx_text(x, y, &font_6x10, s, fg, C_BG);
@@ -57,7 +69,7 @@ static void field(int x, int y, int width, const char *s, uint16_t fg)
 static void draw_freq(void)
 {
     char s[10];
-    uint32_t mhz = freq / 100000, frac = freq % 100000;
+    uint32_t f = radio_freq(), mhz = f / 100000, frac = f % 100000;
     s[0] = (char)('0' + mhz / 100 % 10);
     s[1] = (char)('0' + mhz / 10 % 10);
     s[2] = (char)('0' + mhz % 10);
@@ -70,37 +82,65 @@ static void draw_freq(void)
         lcd_fill(99, 30, 10, 20, C_BG);
 }
 
+static void draw_header(void)
+{
+    char s[12], n[8];
+    lcd_fill(0, 0, LCD_W, 13, C_BAR);
+    gfx_text(4, 2, &font_6x10, "CFW v0.8", C_TEXT, C_BAR);
+    if (ch_mode) {
+        dec(n, scan_mode() == SCAN_CH ? scan_channel() : channel);
+        append(append(s, "CH "), n);
+    } else {
+        append(s, "VFO");
+    }
+    gfx_text(LCD_W - 4 - gfx_text_width(&font_6x10, s), 2, &font_6x10, s, C_TEXT, C_BAR);
+    field(4, 16, 120, ch_mode ? ch_name : "", C_TEXT);
+}
+
 static void draw_settings(void)
 {
-    char s[24], n[8];
-    int i = 0;
-    for (const char *p = am ? "AM " : "FM "; *p;) s[i++] = *p++;
-    for (const char *p = narrow ? "N " : "W "; *p;) s[i++] = *p++;
-    for (const char *p = step_names[step]; *p;) s[i++] = *p++;
-    s[i++] = ' ';
-    s[i++] = 'S';
-    s[i++] = 'Q';
-    dec(n, squelch);
-    for (const char *p = n; *p;) s[i++] = *p++;
-    s[i] = 0;
+    char s[24], n[4];
+    char *p = append(s, am ? "AM " : "FM ");
+    p = append(p, narrow ? "N " : "W ");
+    p = append(p, step_names[step]);
+    p = append(p, " SQ");
+    dec(n, radio_squelch());
+    append(p, n);
     field(4, 54, 120, s, C_TEXT);
 }
 
-static void draw_aux(void)
+/* the thresholds the chip is using, in dBm (raw / 2 - 160) */
+static void draw_thresholds(void)
 {
-    static const char *const names[3] = {"A11:", "A12:", "A8:"};
-    int x = 4;
-    for (int i = 0; i < 3; i++) {
-        x = gfx_text(x, 92, &font_6x10, names[i], C_DIM, C_BG);
-        x = gfx_text(x, 92, &font_6x10, aux[i] ? "1 " : "0 ", aux[i] ? C_OPEN : C_TEXT, C_BG);
-    }
+    char s[24], n[8];
+    uint16_t r78 = bk4819_read(0x78);
+    char *p = append(s, "open ");
+    dec(n, (r78 >> 8) / 2 - 160);
+    p = append(append(p, n), " close ");
+    dec(n, (r78 & 0xFF) / 2 - 160);
+    append(p, n);
+    field(4, 90, 120, radio_squelch() ? s : "squelch off", C_DIM);
 }
 
-static void draw_open(void)
+static void draw_status(void)
 {
-    uint16_t c = open ? C_OPEN : C_SHUT;
-    lcd_fill(4, 106, 56, 16, c);
-    gfx_text(8, 109, &font_6x10, open ? (monitor ? "MONITOR" : "OPEN") : "closed", C_TEXT, c);
+    const char *t;
+    uint16_t c;
+    if (searching) {
+        t = "SEARCH";
+        c = C_BUSY;
+    } else if (scan_mode() != SCAN_OFF && !scan_holding()) {
+        t = "SCAN";
+        c = C_BUSY;
+    } else if (radio_open()) {
+        t = radio_monitor() ? "MONITOR" : scan_holding() ? "SCAN HOLD" : "OPEN";
+        c = C_OPEN;
+    } else {
+        t = "closed";
+        c = C_SHUT;
+    }
+    lcd_fill(4, 106, 64, 16, c);
+    gfx_text(8, 109, &font_6x10, t, C_TEXT, c);
 }
 
 static void draw_rssi(int dbm)
@@ -115,49 +155,99 @@ static void draw_rssi(int dbm)
     lcd_fill(40 + w, 80, 84 - w, 6, C_SHUT);
 }
 
-static void set_aux(int i, int on)
+static void redraw(void)
 {
-    aux[i] = (uint8_t)on;
-    if (on)
-        gpio_bit_set(GPIOA, aux_pins[i]);
-    else
-        gpio_bit_reset(GPIOA, aux_pins[i]);
-    gpio_mode_set(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, aux_pins[i]);
-    draw_aux();
-}
-
-static void set_open(int on)
-{
-    open = (uint8_t)on;
-    bk4819_af(on ? (am ? BK_AF_AM : BK_AF_FM) : BK_AF_MUTE);
-    board_led(0, on);
-    set_aux(1, on);                         /* PA12: speaker amplifier */
-    draw_open();
-}
-
-static void tune(void)
-{
-    bk4819_rx(freq, narrow);
-    board_rf_path(freq, RF_RX);
-    set_open(monitor);
+    draw_header();
     draw_freq();
+    draw_settings();
+    draw_thresholds();
+    draw_status();
 }
 
-static void toggle_aux(int i)
+static void tune_vfo(void)
 {
-    set_aux(i, !aux[i]);
-    debug_puts(i == 0 ? "PA11 " : i == 1 ? "PA12 " : "PA8 ");
-    debug_puts(aux[i] ? "high\r\n" : "low\r\n");
+    radio_tune(vfo, am, narrow);
+    redraw();
+}
+
+static void tune_channel(void)
+{
+    channel_t ch;
+    if (!channel_read(channel, &ch)) {
+        int n = channel_next(channel, 1, 0);
+        if (!n || !channel_read(n, &ch)) {
+            ch_mode = 0;                    /* no channels at all */
+            tune_vfo();
+            return;
+        }
+        channel = n;
+    }
+    for (int i = 0; i < 13; i++)
+        ch_name[i] = ch.name[i];
+    am = (uint8_t)channel_is_am(ch.rx);
+    narrow = ch.narrow;
+    radio_tune(ch.rx, am, narrow);
+    redraw();
+}
+
+static void retune(void)
+{
+    if (ch_mode)
+        tune_channel();
+    else
+        tune_vfo();
+}
+
+/* VFO scan limits: the band in the radio's band table (flash 0xF230: enable, low MHz, high MHz in
+   BCD) that holds the frequency, airband 108-137 MHz, or 5 MHz either side. */
+static void scan_limits(uint32_t f, uint32_t *lo, uint32_t *hi)
+{
+    uint8_t t[20];
+    spiflash_read(0xF230, t, sizeof t);
+    for (int i = 0; i < 20; i += 5) {
+        if (t[i] != 1)
+            continue;
+        uint32_t a = (uint32_t)((t[i + 1] >> 4) * 1000 + (t[i + 1] & 15) * 100 + (t[i + 2] >> 4) * 10 + (t[i + 2] & 15));
+        uint32_t b = (uint32_t)((t[i + 3] >> 4) * 1000 + (t[i + 3] & 15) * 100 + (t[i + 4] >> 4) * 10 + (t[i + 4] & 15));
+        if (f >= a * 100000 && f <= b * 100000) {
+            *lo = a * 100000;
+            *hi = b * 100000;
+            return;
+        }
+    }
+    if (f >= 10800000 && f < 13700000) {
+        *lo = 10800000;
+        *hi = 13700000;
+        return;
+    }
+    *lo = f > 2300000 ? f - 500000 : 1800000;
+    *hi = f + 500000;
+}
+
+static void stop_activity(void)
+{
+    if (searching) {
+        searching = 0;
+        radio_search_stop();
+    }
+    if (scan_mode() != SCAN_OFF) {
+        scan_stop();
+        if (ch_mode)
+            channel = scan_channel();
+        else
+            vfo = radio_freq();
+    }
+    radio_set_monitor(0);
+    retune();
 }
 
 static void beep(void)
 {
-    debug_puts("beep\r\n");
-    set_aux(1, 1);
+    board_speaker(1);
     bk4819_beep(1, 1000);
     delay_ms(300);
     bk4819_beep(0, 0);
-    tune();
+    retune();
 }
 
 /* Serial debug shell, one command per line:
@@ -165,10 +255,10 @@ static void beep(void)
  *   w RR VVVV     write it (hex); a REG_30 value with the PA gain bit (3) is refused: no transmit
  *   p N 0|1|z     set PA pin N (8, 11, 12, 13, 14 or 15) low / high / floating input
  *   t HZ          continuous local tone (no RF) at HZ, 0 = stop and receive again
- *   n NUM         show a big number where the frequency goes (for listening tests)
- *   f HZ          receive on HZ
+ *   f HZ          receive on HZ (VFO)
  *   d             dump the main BK4819 registers
  *   b             1 kHz beep
+ *   x ADDR LEN    hex dump of the external flash (hex address, decimal length up to 256)
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop. */
 static char line[32];
@@ -247,9 +337,6 @@ static void shell_poll(void)
             debug_puts("pins: 8 11 12 13 14 15\r\n");
             break;
         }
-        for (int i = 0; i < 3; i++)
-            if (aux_pins[i] == (1U << pin))
-                aux[i] = (uint8_t)(on != 0);
         if (floating) {
             gpio_mode_set(GPIOA, GPIO_MODE_INPUT, GPIO_PUPD_NONE, 1U << pin);
         } else {
@@ -259,7 +346,6 @@ static void shell_poll(void)
                 gpio_bit_reset(GPIOA, 1U << pin);
             gpio_mode_set(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, 1U << pin);
         }
-        draw_aux();
         debug_puts("ok\r\n");
         break;
     }
@@ -267,21 +353,13 @@ static void shell_poll(void)
         uint32_t hz = parse_num(&p, 10);
         tone_on = hz != 0;                          /* squelch handling pauses meanwhile */
         if (hz) {
+            board_speaker(1);
             bk4819_beep(1, (uint16_t)hz);
             bk4819_write(0x48, 0xB3FF);             /* louder than the stock beep */
         } else {
             bk4819_beep(0, 0);
-            tune();
+            retune();
         }
-        debug_puts("ok\r\n");
-        break;
-    }
-    case 'n': {
-        char num[8];
-        int v = (int)parse_num(&p, 10);
-        dec(num, v);
-        lcd_fill(0, 30, LCD_W, 20, C_BG);
-        gfx_text(44, 30, &font_10x20, num, C_TEXT, C_BG);
         debug_puts("ok\r\n");
         break;
     }
@@ -291,13 +369,16 @@ static void shell_poll(void)
             debug_puts("18-660 MHz\r\n");
             break;
         }
-        freq = hz / 10;
-        tune();
+        stop_activity();
+        ch_mode = 0;
+        vfo = hz / 10;
+        tune_vfo();
         debug_puts("ok\r\n");
         break;
     }
     case 'd': {
-        static const uint8_t regs[] = {0x0C, 0x30, 0x33, 0x37, 0x43, 0x47, 0x48, 0x65, 0x67, 0x70, 0x7E};
+        static const uint8_t regs[] = {0x0C, 0x30, 0x33, 0x37, 0x43, 0x47, 0x48, 0x4F, 0x65, 0x67,
+                                       0x70, 0x78, 0x7E};
         for (unsigned i = 0; i < sizeof regs; i++)
             print_reg(regs[i]);
         debug_puts("GPIOA out ");
@@ -312,8 +393,27 @@ static void shell_poll(void)
     case 'b':
         beep();
         break;
+    case 'x': {
+        uint32_t addr = parse_num(&p, 16), len = parse_num(&p, 10);
+        uint8_t buf[16];
+        if (len > 256)
+            len = 256;
+        for (uint32_t off = 0; off < len; off += 16) {
+            uint32_t n = len - off < 16 ? len - off : 16;
+            spiflash_read(addr + off, buf, n);
+            debug_hex32(addr + off);
+            debug_putc(':');
+            for (uint32_t i = 0; i < n; i++) {
+                debug_putc(' ');
+                debug_putc("0123456789ABCDEF"[buf[i] >> 4]);
+                debug_putc("0123456789ABCDEF"[buf[i] & 15]);
+            }
+            debug_puts("\r\n");
+        }
+        break;
+    }
     default:
-        debug_puts("r RR | w RR VVVV | p PIN 0/1/z | f HZ | t HZ | n NUM | d | b\r\n");
+        debug_puts("r RR | w RR VVVV | p PIN 0/1/z | f HZ | t HZ | d | b | x ADDR LEN\r\n");
     }
     line_len = 0;
     line_ready = 0;
@@ -327,121 +427,195 @@ static void on_key(const key_event_t *ev)
         debug_puts("\r\n");
     }
     int press = ev->type == KEV_PRESS, repeat = ev->type == KEV_REPEAT;
-    switch (ev->key) {
-    case KEY_UP:
-    case KEY_DOWN:
+    int dir = ev->key == KEY_UP ? 1 : -1;
+
+    if (ev->key == KEY_UP || ev->key == KEY_DOWN) {
         if (!press && !repeat)
             return;
-        freq = ev->key == KEY_UP ? freq + steps[step] : freq - steps[step];
-        if (freq < 1800000) freq = 1800000;           /* 18 MHz */
-        if (freq > 66000000) freq = 66000000;         /* 660 MHz */
-        tune();
+        if (searching)
+            return;
+        if (scan_mode() != SCAN_OFF) {
+            if (press) {
+                if (scan_mode() == SCAN_VFO) {
+                    uint32_t lo, hi;
+                    scan_limits(radio_freq(), &lo, &hi);
+                    scan_start_vfo(lo, hi, steps[step], dir, am, narrow);
+                } else {
+                    scan_start_ch(scan_channel(), dir);
+                }
+                draw_status();
+            }
+            return;
+        }
+        if (ch_mode) {
+            int n = channel_next(channel, dir, 0);
+            if (n)
+                channel = n;
+        } else {
+            vfo = dir > 0 ? vfo + steps[step] : vfo - steps[step];
+            if (vfo < 1800000) vfo = 1800000;           /* 18 MHz */
+            if (vfo > 66000000) vfo = 66000000;         /* 660 MHz */
+        }
+        retune();
         return;
-    default:
-        break;
     }
     if (!press)
         return;
     switch (ev->key) {
-    case KEY_BACK: step = (uint8_t)((step + 1) % 3); draw_settings(); break;
-    case KEY_0:    am ^= 1; set_open(open); draw_settings(); break;
-    case KEY_FM:   narrow ^= 1; tune(); draw_settings(); break;
-    case KEY_4:    squelch -= 2; draw_settings(); break;
-    case KEY_6:    squelch += 2; draw_settings(); break;
-    case KEY_MENU: monitor ^= 1; set_open(monitor); break;
-    case KEY_1:    toggle_aux(0); break;
-    case KEY_2:    toggle_aux(1); break;
-    case KEY_3:    toggle_aux(2); break;
-    case KEY_5:    beep(); break;
-    case KEY_7:    freq = 10450000; tune(); break;   /* 104.5 MHz broadcast: a known signal */
-    case KEY_8:    freq = 47690000; tune(); break;
-    case KEY_PTT:  debug_puts("PTT: no transmit in this build\r\n"); break;
-    default: break;
+    case KEY_BACK:
+        stop_activity();
+        break;
+    case KEY_AB:
+        stop_activity();
+        if (!ch_mode)
+            vfo = radio_freq();
+        ch_mode ^= 1;
+        retune();
+        break;
+    case KEY_2:
+        radio_set_squelch((radio_squelch() + 1) % 10);
+        draw_settings();
+        draw_thresholds();
+        draw_status();
+        break;
+    case KEY_3:
+        step = (uint8_t)((step + 1) % (sizeof steps / sizeof steps[0]));
+        draw_settings();
+        break;
+    case KEY_9:
+        if (ch_mode)
+            break;
+        am ^= 1;
+        tune_vfo();
+        break;
+    case KEY_FM:
+        if (ch_mode)
+            break;
+        narrow ^= 1;
+        tune_vfo();
+        break;
+    case KEY_MENU:
+        radio_set_monitor(!radio_monitor());
+        draw_status();
+        break;
+    case KEY_4:
+        if (searching) {
+            stop_activity();
+            break;
+        }
+        stop_activity();
+        searching = 1;
+        radio_search_start();
+        draw_status();
+        break;
+    case KEY_6:
+        if (scan_mode() != SCAN_OFF) {
+            stop_activity();
+            break;
+        }
+        stop_activity();
+        if (ch_mode) {
+            scan_start_ch(channel, 1);
+        } else {
+            uint32_t lo, hi;
+            scan_limits(vfo, &lo, &hi);
+            scan_start_vfo(lo, hi, steps[step], 1, am, narrow);
+        }
+        draw_status();
+        break;
+    case KEY_5:
+        beep();
+        break;
+    case KEY_7:
+        stop_activity();
+        ch_mode = 0;
+        vfo = 10450000;                     /* 104.5 MHz broadcast: a known signal */
+        tune_vfo();
+        break;
+    case KEY_PTT:
+        debug_puts("PTT: no transmit in this build\r\n");
+        break;
+    default:
+        break;
     }
 }
 
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.72 ===\r\nbootloader tag ");
+    debug_puts("\r\n=== A36SE FW v0.8 ===\r\nbootloader tag ");
     debug_write((const uint8_t *)0x08000300U, 7);
-    debug_puts("\r\nGPIOA mode ");
-    debug_hex32(GPIO_CTL(GPIOA));
-    debug_puts(" out ");
-    debug_hex32(GPIO_OCTL(GPIOA));
-    debug_puts(" in ");
-    debug_hex32(GPIO_ISTAT(GPIOA));
-    debug_puts("\r\nGPIOF in ");
-    debug_hex32(GPIO_ISTAT(GPIOF));
     debug_puts("\r\n");
 
     systick_init();
     __enable_irq();                 /* the startup code left interrupts masked */
 
-    for (int i = 0; i < 3; i++)                 /* the bootloader already drives these */
-        aux[i] = (GPIO_OCTL(GPIOA) & aux_pins[i]) != 0;
     board_init();
     lcd_init();
     keypad_init();
     bk4819_init();
     board_rf_path(0, RF_OFF);                   /* as stock before its first RX: REG_33 = 0 */
-    debug_puts("BK4819 REG37 ");
-    debug_hex16(bk4819_read(0x37));
-    debug_puts(" REG48 ");
-    debug_hex16(bk4819_read(0x48));
-    debug_puts(" (expect 1D0F B3FF)\r\n");
+    spiflash_init();
+    debug_puts("flash id ");
+    debug_hex32(spiflash_jedec_id());
+    debug_puts("\r\n");
+    radio_init();
 
-    lcd_fill(0, 0, LCD_W, 13, C_BAR);
-    gfx_text(4, 2, &font_6x10, "A36SE CFW v0.72 RX", C_TEXT, C_BAR);
-    gfx_text(4, 16, &font_6x10, board_hwver2() ? "HWVER02" : "HW other", C_DIM, C_BG);
     gfx_text(4, 66, &font_6x10, "RSSI", C_DIM, C_BG);
-    draw_settings();
-    draw_aux();
-    tune();
-    debug_puts("BK4819 REG30 ");
-    debug_hex16(bk4819_read(0x30));
-    debug_puts(" (expect BFF1)\r\n");
+    tune_vfo();
 
-    uint32_t next_scan = millis(), next_sq = millis(), next_show = millis(), next_beat = millis() + 5000;
-    int rssi = -160;
-    uint8_t shown_switch = 2;
+    uint32_t next_key = millis(), next_radio = millis(), next_show = millis();
     for (;;) {
         progmode_poll();
         fwdgt_feed();
         uint32_t now = millis();
-        if ((int32_t)(now - next_scan) >= 0) {
-            next_scan += KEY_SCAN_MS;
+        if ((int32_t)(now - next_key) >= 0) {
+            next_key += KEY_SCAN_MS;
             keypad_scan();
             board_power_poll();
-            uint8_t sw = gpio_input_bit_get(POWER_SENSE_PORT, POWER_SENSE_PIN) == SET;
-            if (sw != shown_switch) {
-                shown_switch = sw;
-                field(64, 16, 60, sw ? "switch:off" : "switch:on", C_DIM);
-            }
         }
         key_event_t ev;
         while (keypad_get(&ev))
             on_key(&ev);
         shell_poll();
 
-        if ((int32_t)(now - next_sq) >= 0 && !tone_on) {
-            next_sq = now + 50;
-            rssi = bk4819_rssi_dbm();
-            int want = monitor || rssi >= (open ? squelch - 3 : squelch);
-            if (want != open)
-                set_open(want);
+        if ((int32_t)(now - next_radio) >= 0 && !tone_on) {
+            next_radio = now + 10;
+            if (searching) {
+                uint32_t f;
+                if (radio_search_poll(&f)) {
+                    searching = 0;
+                    bk4819_search(0);
+                    ch_mode = 0;
+                    vfo = f;
+                    tune_vfo();
+                    debug_puts("search found ");
+                    debug_hex32(f);
+                    debug_puts("\r\n");
+                }
+            } else if (scan_mode() != SCAN_OFF) {
+                int e = scan_poll();
+                if (e == SCAN_EV_STEP || e == SCAN_EV_RESUME) {
+                    if (scan_mode() == SCAN_CH) {
+                        channel_t ch;
+                        channel = scan_channel();
+                        if (channel_read(channel, &ch))
+                            for (int i = 0; i < 13; i++)
+                                ch_name[i] = ch.name[i];
+                        draw_header();
+                    }
+                    draw_freq();
+                    draw_status();
+                } else if (e == SCAN_EV_HOLD) {
+                    draw_status();
+                }
+            } else if (radio_poll()) {
+                draw_status();
+            }
         }
         if ((int32_t)(now - next_show) >= 0) {
-            next_show += 250;
-            draw_rssi(rssi);
-        }
-        if ((int32_t)(now - next_beat) >= 0) {
-            char s[12];
-            next_beat += 5000;
-            dec(s, rssi);
-            debug_puts("rssi ");
-            debug_puts(s);
-            debug_puts(open ? " open\r\n" : " closed\r\n");
+            next_show = now + 250;
+            draw_rssi(radio_rssi_dbm());
         }
     }
 }

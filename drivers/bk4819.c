@@ -100,15 +100,15 @@ void bk4819_init(void)
         bk4819_write((uint8_t)seq2[i][0], seq2[i][1]);
 }
 
-void bk4819_rx(uint32_t freq_10hz, int narrow)
+void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
 {
     bk4819_write(0x37, 0x1F0F);
     bk4819_write(0x30, 0x0000);
     bk4819_write(0x38, (uint16_t)freq_10hz);
     bk4819_write(0x39, (uint16_t)(freq_10hz >> 16));
     bk4819_write(0x43, narrow ? 0x4048 : 0x3028);
-    bk4819_write(0x78, 0x3028);
-    bk4819_write(0x4F, 0x0000);
+    bk4819_write(0x78, reg78);                   /* squelch RSSI open << 8 | close */
+    bk4819_write(0x4F, reg4f);                   /* squelch noise close << 8 | open */
     bk4819_write(0x51, 0x9000);
     bk4819_write(0x07, 0x0471);
     bk4819_write(0x07, 0x21CD);
@@ -156,4 +156,37 @@ void bk4819_beep(int on, uint16_t hz)
         bk4819_write(0x70, 0x0000);
         bk4819_write(0x48, 0xB3FF);
     }
+}
+
+/* Frequency counter (stock 0x8009512 / 0x8009544 / 0x8009434): FSK, tones and interrupts off,
+   then REG_32 starts a measurement of the strongest nearby carrier. */
+void bk4819_search(int on)
+{
+    if (on) {
+        bk4819_write(0x3F, 0x0000);
+        bk4819_write(0x59, 0x2028);
+        bk4819_write(0x70, 0x0000);
+        bk4819_write(0x58, 0x0000);
+        bk4819_write(0x32, 0x8245);
+    } else {
+        bk4819_write(0x32, 0x8244);
+        bk4819_write(0x3F, 0x07FE);              /* interrupt enables, as init */
+    }
+}
+
+/* 1 and the measured frequency (10 Hz units) once a measurement is complete; then restart it. */
+int bk4819_search_result(uint32_t *freq_10hz)
+{
+    uint16_t hi = bk4819_read(0x0D);
+    if (hi & 0x8000)
+        return 0;
+    *freq_10hz = ((uint32_t)(hi & 0x07FF) << 16) | bk4819_read(0x0E);
+    bk4819_write(0x32, 0x8244);
+    bk4819_write(0x32, 0x8245);
+    return 1;
+}
+
+int bk4819_squelch_open(void)
+{
+    return (bk4819_read(0x0C) & 0x0002) != 0;
 }

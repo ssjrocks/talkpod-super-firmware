@@ -2,11 +2,14 @@
 """Run the firmware in Unicorn: simulated keys, serial output, and a PNG of what it draws on the LCD.
 
 usage: emu.py build/a36se-fw.elf [--ms 3000] [--keys 200:UP:100,400:5:900,1800:PTT:300] [--png lcd.png]
-              [--bk] [--bkreg 0x67=0x50] [--switch-off-at MS]
+              [--bk] [--bkreg 0x67=0x50] [--bkreg-at MS:0x0C=0x0002 ...] [--switch-off-at MS]
+              [--flash tests/data/flash-test.bin]
 
 --keys is a list of start_ms:KEY:duration_ms (KEY as in drivers/keypad.c key_name()). The BK4819
 is modelled on its bit-banged pins (writes are stored, reads answered from them or --bkreg); --bk
-logs every register access. The power switch (PF7) reads on until --switch-off-at. Time is
+logs every register access; --bkreg-at changes a register value at a time (a signal opening the
+squelch, a frequency-counter result). The power switch (PF7) reads on until --switch-off-at.
+--flash serves an image of the external SPI flash (W25Q16 READ / JEDEC ID); erased otherwise. Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -25,6 +28,7 @@ INSN_PER_MS = 24000
 X_OFFSET = 32                      # drivers/lcd.c
 GPIOA, GPIOB, GPIOC, GPIOF = 0x48000000, 0x48000400, 0x48000800, 0x48001400
 SPI1 = 0x40003800
+SPI0 = 0x40013000
 USART0 = 0x40013800                # older layout on this MCU: STAT +0, DATA +4
 
 MATRIX = ["MENU", "UP", "DOWN", "BACK", "1", "2", "3", "A/B", "4", "5", "6", "0", "7", "8", "9", "FM"]
@@ -68,6 +72,8 @@ def main():
     ap.add_argument("--bk", action="store_true")
     ap.add_argument("--bkreg", action="append", default=[])
     ap.add_argument("--switch-off-at", type=int, default=10**9)
+    ap.add_argument("--bkreg-at", action="append", default=[])
+    ap.add_argument("--flash")
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
@@ -89,7 +95,15 @@ def main():
           "cx": 0, "cy": 0, "hi": None, "bk": None}
     st["octl"].update({GPIOC: 0, GPIOF: 0})
     bkregs = {int(k, 0): int(v, 0) for k, v in (r.split("=") for r in args.bkreg)}
+    bk_sched = []
+    for item in args.bkreg_at:
+        when, rv = item.split(":")
+        reg, val = rv.split("=")
+        bk_sched.append((int(when), int(reg, 0), int(val, 0)))
+    bk_sched.sort()
     bklog = []
+    flash = bytearray(open(args.flash, "rb").read()) if args.flash else bytearray()
+    fl = {"cmd": [], "out": b"", "rx": 0}
     gram = [0] * (162 * 162)
     serial = bytearray()
     log = []
@@ -107,8 +121,15 @@ def main():
             uc.emu_stop()
 
     def on_read(uc, access, addr, size, value, _):
+        while bk_sched and bk_sched[0][0] <= st["ms"]:
+            _, reg, val = bk_sched.pop(0)
+            bkregs[reg] = val
         if addr == SPI1 + 0x08:
             uc.mem_write(addr, struct.pack("<I", 0x02))            # TBE, not busy
+        elif addr == SPI0 + 0x08:
+            uc.mem_write(addr, struct.pack("<I", 0x03))            # TBE | RBNE
+        elif addr == SPI0 + 0x0C:
+            uc.mem_write(addr, struct.pack("<I", fl["rx"]))
         elif addr == USART0:
             uc.mem_write(addr, struct.pack("<I", 0xC0))            # TXE | TC, nothing received
         elif addr == GPIOB + 0x10:                                 # ISTAT: key matrix
@@ -199,8 +220,23 @@ def main():
                 x, y = st["win"][0], y + 1
             st["cx"], st["cy"] = x, y
 
+    def flash_byte(b):
+        """W25Q16 model: CS = PA4. READ 03 a2 a1 a0 and JEDEC ID 9F; erased (FF) elsewhere."""
+        if (st["octl"][GPIOA] >> 4) & 1:
+            return 0xFF
+        c = fl["cmd"]
+        c.append(b)
+        if c[0] == 0x9F:
+            return [0xFF, 0x5E, 0x60, 0x15][min(len(c) - 1, 3)]
+        if c[0] == 0x03 and len(c) > 4:
+            a = (c[1] << 16 | c[2] << 8 | c[3]) + len(c) - 5
+            return flash[a] if a < len(flash) else 0xFF
+        return 0xFF
+
     def on_write(uc, access, addr, size, value, _):
-        if addr == USART0 + 0x04:
+        if addr == SPI0 + 0x0C:
+            fl["rx"] = flash_byte(value & 0xFF)
+        elif addr == USART0 + 0x04:
             serial.append(value & 0xFF)
             if value & 0xFF == 0x0A:
                 log.append((st["ms"], serial.decode("latin-1").rstrip()))
@@ -210,10 +246,14 @@ def main():
             ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][port] = (st["octl"][port] | (value & 0xFFFF)) & ~(value >> 16)
             bk_pins(ba, bc)
+            if (st["octl"][GPIOA] >> 4) & 1:
+                fl["cmd"] = []
         elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x28:                         # BC
             ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x28] &= ~(value & 0xFFFF)
             bk_pins(ba, bc)
+            if (st["octl"][GPIOA] >> 4) & 1:
+                fl["cmd"] = []
         elif (addr & ~0x3FF) in st["octl"] and (addr & 0x3FF) == 0x14:                         # OCTL
             ba, bc = st["octl"][GPIOA], st["octl"][GPIOC]
             st["octl"][addr - 0x14] = value & 0xFFFF
