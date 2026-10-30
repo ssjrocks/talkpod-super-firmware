@@ -25,10 +25,14 @@ uint16_t bk4819_irq(void);                      /* pending interrupt flags (REG_
 /* FSK modem for text messages (UV-K5 messenger settings). Once set up it listens on every frequency
    bk4819_rx() tunes. Flags in bk4819_irq(): 0x0002 sync found, 0x1000 a word arrived, 0x2000 the
    packet ended, 0x8000 sent. */
-enum { BK_FSK_1200, BK_FSK_700, BK_FSK_450, BK_FSK_OFF = 0xFF };
+enum { BK_FSK_1200, BK_FSK_700, BK_FSK_450, BK_FSK_AFSK, BK_FSK_OFF = 0xFF };
 void     bk4819_fsk_setup(int modem, int rx_len);
 int      bk4819_fsk_send(const uint8_t *data, int len, int narrow);  /* transmitter on; blocks; 1 if sent */
 uint16_t bk4819_fsk_word(void);                 /* the next two received bytes, first in the low byte */
 void     bk4819_fsk_rearm(void);                /* clear the FIFO and listen again */
+void     bk4819_fsk_invert(int on);             /* receive with the bits inverted (BK_FSK_AFSK) */
+void     bk4819_afsk_rx_mode(uint16_t r58);     /* REG_58 for BK_FSK_AFSK, to try demodulator modes */
+void     bk4819_tone_tx(int on);                /* while transmitting: tone 1 instead of the mic */
+void     bk4819_tone_hz(uint16_t hz);
 
 #endif

@@ -3,7 +3,7 @@
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK
  * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 5 messages, 6 scan,
- * MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
+ * 7 APRS, MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
  * monitor while held, side key 2 starts/stops the channel scan. During a scan 0 locks the channel
  * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
  * or switch the modulation.
@@ -25,6 +25,7 @@
 #include "voice.h"
 #include "tx.h"
 #include "msg.h"
+#include "aprs.h"
 
 #define C_BG     RGB(8, 10, 18)
 #define C_PANEL  RGB(26, 32, 48)
@@ -41,7 +42,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
@@ -308,11 +309,13 @@ static void draw_main(void)
 
 /* ---- menu ---------------------------------------------------------------------------------- */
 
-enum { M_MESSAGES, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_TOT,
-       M_MSG_SPEED, M_MSG_RECEIPTS, M_KEYBEEP, M_VOICE, M_SCAN, M_ABOUT, M_COUNT };
+enum { M_MESSAGES, M_APRS, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT,
+       M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT, M_KEYBEEP, M_VOICE,
+       M_SCAN, M_ABOUT, M_COUNT };
 static const char *const menu_names[M_COUNT] = {
-    "Messages", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "TX timeout",
-    "Msg speed", "Msg receipts", "Key beep", "Voice", "Scan channels", "About",
+    "Messages", "APRS", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight",
+    "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon", "Key beep",
+    "Voice", "Scan channels", "About",
 };
 static const char *const msg_speed_names[] = {"1200", "700", "450"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
@@ -333,6 +336,13 @@ static void menu_value(int item, char *s)
     case M_MESSAGES:   if (msg_unread()) put_str(put_dec(s, (uint32_t)msg_unread()), " new"); break;
     case M_MSG_SPEED:  put_str(s, msg_speed_names[msg_modem()]); break;
     case M_MSG_RECEIPTS: put_str(s, msg_receipts() ? "On" : "Off"); break;
+    case M_APRS:       if (aprs_unread()) put_str(put_dec(s, (uint32_t)aprs_unread()), " new"); break;
+    case M_APRS_CALL:  put_str(s, aprs_cfg.call[0] ? aprs_cfg.call : "not set"); break;
+    case M_APRS_PATH:  put_str(s, aprs_path_names[aprs_cfg.path & 3]); break;
+    case M_APRS_TEXT:
+        memcpy(s, aprs_cfg.text, 9);
+        s[9] = 0;
+        break;
     case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
     case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
     default: break;
@@ -345,7 +355,7 @@ static void draw_menu_row(int i)
         return;
     int y = 16 + (i - menu_top) * 13, sel = i == menu_pos;
     uint16_t bg = sel ? C_PANEL2 : C_BG;
-    char v[12];
+    char v[16];
     if (sel)
         gfx_rrect(2, y - 1, 124, 13, bg);
     else
@@ -379,7 +389,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.95", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.96", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -456,7 +466,7 @@ static void draw_msg_history(void)
     }
 }
 
-static void draw_msg_compose(void)
+static void draw_compose(const char *hint)     /* the messages screen's own hint when 0 */
 {
     char line[MSG_LINE + 1], s[24];
     lcd_fill(0, MSG_BOTTOM, LCD_W, LCD_H - MSG_BOTTOM, C_PANEL);
@@ -479,9 +489,17 @@ static void draw_msg_compose(void)
         gfx_text(1, LCD_H - 9, &font_5x8, toast, C_AMBER, C_PANEL);
         return;
     }
-    put_str(put_dec(put_str(put_dec(put_str(s, lower ? "abc " : "ABC "), comp_len), "/"), MSG_TEXT),
-            comp_len ? "  MENU send" : "  BACK exit");
-    gfx_text(1, LCD_H - 9, &font_5x8, s, C_DIM, C_PANEL);
+    if (!hint) {
+        put_str(put_dec(put_str(put_dec(put_str(s, lower ? "abc " : "ABC "), comp_len), "/"), MSG_TEXT),
+                comp_len ? "  MENU send" : "  BACK exit");
+        hint = s;
+    }
+    gfx_text(1, LCD_H - 9, &font_5x8, hint, C_DIM, C_PANEL);
+}
+
+static void draw_msg_compose(void)
+{
+    draw_compose(0);
 }
 
 static void draw_msg(void)
@@ -499,27 +517,185 @@ static void open_messages(void)
     draw_msg();
 }
 
-static void type_key(int digit, int hold)
+static int digit_of(int key);
+
+/* a key typed into buf (len characters, at most max); call: callsign characters only */
+static void type_key(char *buf, uint8_t *len, int max, int digit, int hold, int call)
 {
-    const char *set = key_chars[digit];
+    static const char *const call_chars[10] = {
+        "0", "-1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
+    };
+    const char *set = (call ? call_chars : key_chars)[digit];
     uint32_t now = millis();
-    if (!hold && digit == tap_key && now - tap_at < TAP_MS && comp_len) {
+    if (!hold && digit == tap_key && now - tap_at < TAP_MS && *len) {
         tap_n = (uint8_t)((tap_n + 1) % strlen(set));
-        comp_len--;                             /* the same key again: the next character */
+        (*len)--;                               /* the same key again: the next character */
     } else {
         tap_n = 0;
-        if (comp_len >= MSG_TEXT) {
-            show_toast("message full");
+        if (*len >= max) {
+            show_toast("full");
             return;
         }
     }
     char c = hold ? (char)('0' + digit) : set[tap_n];
-    if (lower && c >= 'A' && c <= 'Z')
+    if (lower && !call && c >= 'A' && c <= 'Z')
         c = (char)(c + 32);
-    comp[comp_len++] = c;
-    comp[comp_len] = 0;
+    buf[(*len)++] = c;
+    buf[*len] = 0;
     tap_key = hold ? 0xFF : (uint8_t)digit;
     tap_at = now;
+}
+
+/* digits, FM (ABC / abc) and a held BACK (clear) for a text being typed; 1 if the key was used */
+static int text_key(const key_event_t *ev, char *buf, uint8_t *len, int max, int call)
+{
+    int d = digit_of(ev->key);
+    if (d >= 0) {
+        if (ev->type == KEV_PRESS) {
+            key_long[ev->key] = 0;
+        } else if (ev->type == KEV_LONG) {
+            key_long[ev->key] = 1;
+            type_key(buf, len, max, d, 1, call);
+        } else if (ev->type == KEV_RELEASE && !key_long[ev->key]) {
+            type_key(buf, len, max, d, 0, call);
+        }
+        return 1;
+    }
+    if (ev->key == KEY_FM && ev->type == KEV_PRESS && !call) {
+        lower ^= 1;
+        tap_key = 0xFF;
+        return 1;
+    }
+    if (ev->key == KEY_BACK && ev->type == KEV_LONG) {
+        *len = 0;
+        buf[0] = 0;
+        return 1;
+    }
+    return 0;
+}
+
+/* ---- APRS screen --------------------------------------------------------------------------- */
+
+/* Heard stations and our own packets, newest at the bottom; up/down pick one (highlighted), and
+   what is typed below goes to it as an APRS message. MENU with nothing typed sends the beacon. */
+static int8_t aprs_sel = -1;
+static uint8_t aprs_on;                 /* the modem listens for APRS (the screen is open) */
+
+static void draw_aprs_header(void)
+{
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "APRS", C_TEXT, C_PANEL);
+    const char *r = aprs_receiving() ? "receiving" : aprs_cfg.call[0] ? aprs_cfg.call : "no call set";
+    gfx_text(124 - gfx_text_width(&font_5x8, r), 4, &font_5x8, r,
+             aprs_receiving() ? C_GREEN : aprs_cfg.call[0] ? C_DIM : C_AMBER, C_PANEL);
+}
+
+static void draw_aprs_list(void)
+{
+    char full[64], line[MSG_LINE + 1];
+    int y = MSG_BOTTOM;
+    lcd_fill(0, 14, LCD_W, MSG_BOTTOM - 14, C_BG);
+    if (!aprs_count()) {
+        gfx_text(4, 24, &font_6x10, "Nothing heard yet.", C_DIM, C_BG);
+        gfx_text(4, 40, &font_5x8, "MENU sends a beacon on", C_DIM, C_BG);
+        gfx_text(4, 50, &font_5x8, "the selected slot. Set", C_DIM, C_BG);
+        gfx_text(4, 60, &font_5x8, "APRS call in the menu.", C_DIM, C_BG);
+        gfx_text(4, 76, &font_5x8, "Receiving: experimental", C_DIM, C_BG);
+        return;
+    }
+    for (int i = aprs_sel > 0 ? aprs_sel : 0; i < aprs_count() && y > 24; i++) {
+        const aprs_pkt_t *p = aprs_get(i);
+        int out = p->flags & APRS_OUT;
+        char *e = put_str(full, out ? (p->flags & APRS_ACKED ? "+" : ">") : "");
+        e = put_str(put_str(e, p->from), " ");
+        int head_len = (int)(e - full) - 1;
+        put_str(e, p->text);
+        int n = (int)strlen(full), lines = n > MSG_LINE ? 2 : 1;
+        uint16_t bg = i == aprs_sel ? C_PANEL2 : C_BG;
+        uint16_t cc = out ? C_CYAN : p->flags & APRS_TO_ME ? C_AMBER : C_GREEN;
+        if (y - lines * 10 < 15)
+            break;
+        lcd_fill(0, y - lines * 10, LCD_W, lines * 10, bg);
+        for (int l = lines - 1; l >= 0; l--) {
+            y -= 10;
+            memcpy(line, full + l * MSG_LINE, MSG_LINE);
+            line[MSG_LINE] = 0;
+            gfx_text(1, y, &font_6x10, line, C_TEXT, bg);
+            if (l == 0) {
+                line[head_len < MSG_LINE ? head_len : MSG_LINE] = 0;
+                gfx_text(1, y, &font_6x10, line, cc, bg);
+            }
+        }
+    }
+}
+
+static void draw_aprs_compose(void)
+{
+    char s[24];
+    const aprs_pkt_t *p = aprs_sel >= 0 ? aprs_get(aprs_sel) : 0;
+    if (comp_len)
+        put_str(put_str(put_str(s, "to "), p ? p->from : "?"), "  MENU send");
+    else
+        put_str(s, p ? "type to message" : "MENU beacon  up: pick");
+    draw_compose(s);
+}
+
+static void draw_aprs(void)
+{
+    draw_aprs_header();
+    draw_aprs_list();
+    draw_aprs_compose();
+}
+
+static void open_aprs(void)
+{
+    screen = SCR_APRS;
+    aprs_read_all();
+    aprs_sel = -1;
+    draw_aprs();
+}
+
+/* ---- text editor (menu: APRS call, APRS beacon) -------------------------------------------- */
+
+static char ebuf[16];
+static uint8_t elen, edit_call;
+
+static void draw_edit_field(void)
+{
+    lcd_fill(2, 36, 124, 20, C_PANEL);
+    gfx_text(6, 40, &font_7x13b, ebuf, C_TEXT, C_PANEL);
+    tap_shown = (uint8_t)tap_pending();
+    if (tap_shown && elen)
+        gfx_text(6 + (elen - 1) * 7, 40, &font_7x13b, (char[]){ebuf[elen - 1], 0}, C_BG, C_AMBER);
+    else if (elen < (edit_call ? 9 : 14))
+        lcd_fill(6 + elen * 7, 53, 6, 1, C_CYAN);
+    lcd_fill(0, LCD_H - 10, LCD_W, 10, C_BG);
+    if ((int32_t)(toast_until - millis()) > 0)
+        gfx_text(4, LCD_H - 9, &font_5x8, toast, C_AMBER, C_BG);
+}
+
+static void draw_edit(void)
+{
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, edit_call ? "APRS call" : "APRS beacon", C_TEXT, C_PANEL);
+    lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
+    gfx_text(4, 20, &font_5x8, edit_call ? "Callsign-SSID, e.g." : "Status text, sent with", C_DIM, C_BG);
+    gfx_text(4, 28, &font_5x8, edit_call ? "VK2ABC-7 (1 key: -)" : "MENU on the APRS screen", C_DIM, C_BG);
+    gfx_text(4, 70, &font_5x8, "MENU save", C_DIM, C_BG);
+    gfx_text(4, 80, &font_5x8, "BACK delete / cancel", C_DIM, C_BG);
+    if (!edit_call)
+        gfx_text(4, 90, &font_5x8, "FM abc / ABC", C_DIM, C_BG);
+    draw_edit_field();
+}
+
+static void open_edit(int call)
+{
+    edit_call = (uint8_t)call;
+    strcpy(ebuf, call ? aprs_cfg.call : aprs_cfg.text);
+    elen = (uint8_t)strlen(ebuf);
+    tap_key = 0xFF;
+    screen = SCR_EDIT;
+    draw_edit();
 }
 
 static void redraw(void)
@@ -530,6 +706,10 @@ static void redraw(void)
         draw_menu();
     else if (screen == SCR_MSG)
         draw_msg();
+    else if (screen == SCR_APRS)
+        draw_aprs();
+    else if (screen == SCR_EDIT)
+        draw_edit();
     else
         draw_about();
 }
@@ -678,6 +858,9 @@ static void long_press(int key)
         break;
     case KEY_5:
         open_messages();
+        return;
+    case KEY_7:
+        open_aprs();
         return;
     default:
         return;
@@ -877,34 +1060,13 @@ static void send_message(void)
 
 static void key_msg(const key_event_t *ev)
 {
-    int d = digit_of(ev->key);
-    if (d >= 0) {
-        if (ev->type == KEV_PRESS) {
-            key_long[ev->key] = 0;
-        } else if (ev->type == KEV_LONG) {
-            key_long[ev->key] = 1;
-            type_key(d, 1);
-            draw_msg_compose();
-        } else if (ev->type == KEV_RELEASE && !key_long[ev->key]) {
-            type_key(d, 0);
-            draw_msg_compose();
-        }
-        return;
-    }
-    if (ev->type == KEV_LONG && ev->key == KEY_BACK) {
-        comp_len = 0;                           /* hold BACK: clear it all */
-        comp[0] = 0;
+    if (text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
         draw_msg_compose();
         return;
     }
     if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
         return;
     switch (ev->key) {
-    case KEY_FM:
-        lower ^= 1;
-        tap_key = 0xFF;
-        draw_msg_compose();
-        break;
     case KEY_MENU:
         if (comp_len)
             send_message();
@@ -934,6 +1096,109 @@ static void key_msg(const key_event_t *ev)
         break;
     default:
         break;
+    }
+}
+
+static void aprs_send(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    const aprs_pkt_t *p = aprs_sel >= 0 ? aprs_get(aprs_sel) : 0;
+    if (comp_len && (!p || (p->flags & APRS_OUT && !(p->flags & APRS_MSG)))) {
+        show_toast("pick a station: up");
+        draw_aprs_compose();
+        return;
+    }
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    tap_key = 0xFF;
+    lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
+    gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
+    int r = comp_len ? aprs_message(p->from, comp, s->freq, s->narrow, s->low_power)
+                     : aprs_beacon(s->freq, s->narrow, s->low_power);
+    watch_pause(0);
+    if (r > 0) {
+        debug_puts("APRS sent\r\n");
+        if (comp_len) {
+            comp_len = 0;
+            comp[0] = 0;
+        }
+        aprs_sel = -1;
+    } else {
+        show_toast(r == -2 ? "set APRS call (menu)" : r < 0 ? "TX not allowed here" : "not sent");
+    }
+    draw_aprs();
+}
+
+static void key_aprs(const key_event_t *ev)
+{
+    if (text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
+        draw_aprs_compose();
+        return;
+    }
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    switch (ev->key) {
+    case KEY_MENU:
+        aprs_send();
+        break;
+    case KEY_BACK:
+        snd(SND_CANCEL);
+        tap_key = 0xFF;
+        if (comp_len) {
+            comp[--comp_len] = 0;
+            draw_aprs_compose();
+        } else if (aprs_sel >= 0) {
+            aprs_sel = -1;
+            draw_aprs();
+        } else {
+            screen = SCR_MAIN;
+            draw_main();
+        }
+        break;
+    case KEY_UP:
+        if (aprs_sel + 1 < aprs_count()) {
+            aprs_sel++;
+            draw_aprs_list();
+            draw_aprs_compose();
+        }
+        break;
+    case KEY_DOWN:
+        if (aprs_sel >= 0) {
+            aprs_sel--;
+            draw_aprs_list();
+            draw_aprs_compose();
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+static void key_edit(const key_event_t *ev)
+{
+    if (text_key(ev, ebuf, &elen, edit_call ? 9 : 14, edit_call)) {
+        draw_edit_field();
+        return;
+    }
+    if (ev->type != KEV_PRESS)
+        return;
+    if (ev->key == KEY_MENU) {
+        strcpy(edit_call ? aprs_cfg.call : aprs_cfg.text, ebuf);
+        aprs_save();
+        snd(SND_OPEN);
+        screen = SCR_MENU;
+        draw_menu();
+    } else if (ev->key == KEY_BACK) {
+        snd(SND_CANCEL);
+        tap_key = 0xFF;
+        if (elen) {
+            ebuf[--elen] = 0;
+            draw_edit_field();
+        } else {
+            screen = SCR_MENU;
+            draw_menu();
+        }
     }
 }
 
@@ -973,6 +1238,10 @@ static void menu_change(int dir)
         break;
     case M_MSG_RECEIPTS:
         msg_set_receipts(!msg_receipts());
+        break;
+    case M_APRS_PATH:
+        aprs_cfg.path = (uint8_t)((aprs_cfg.path + 4 + dir) % 4);
+        aprs_save();
         break;
     case M_KEYBEEP:
         sounds ^= 1;
@@ -1022,6 +1291,10 @@ static void key_menu(const key_event_t *ev)
             draw_main();
         } else if (menu_pos == M_MESSAGES) {
             open_messages();
+        } else if (menu_pos == M_APRS) {
+            open_aprs();
+        } else if (menu_pos == M_APRS_CALL || menu_pos == M_APRS_TEXT) {
+            open_edit(menu_pos == M_APRS_CALL);
         } else if (menu_pos == M_ABOUT) {
             screen = SCR_ABOUT;
             draw_about();
@@ -1124,7 +1397,7 @@ static void save_if_changed(uint32_t now)
     gather(&v);
     if (memcmp(&v, &saved, sizeof v) == 0)
         return;
-    if (settings_save(&v, sizeof v))
+    if (settings_save(SET_MAIN, &v, sizeof v))
         saved = v;
     else
         debug_puts("settings: save failed\r\n");
@@ -1137,8 +1410,9 @@ void ui_init(void)
         radio_set_squelch(1);           /* 0 is always open, which leaves dual watch on slot A */
     watch_init();
     msg_init(BK_FSK_1200, 1);
+    aprs_init();
     gather(&v);                         /* defaults for anything an older record lacks */
-    if (settings_load(&v, sizeof v)) {
+    if (settings_load(SET_MAIN, &v, sizeof v)) {
         apply(&v);
         debug_puts("settings loaded\r\n");
     }
@@ -1192,6 +1466,10 @@ void ui_key(const key_event_t *ev)
         key_menu(ev);
     else if (screen == SCR_MSG)
         key_msg(ev);
+    else if (screen == SCR_APRS)
+        key_aprs(ev);
+    else if (screen == SCR_EDIT)
+        key_edit(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();
@@ -1244,13 +1522,53 @@ static void messages(uint32_t now)
         draw_status(), draw_hint();
 }
 
+static void aprs_events(uint32_t now)
+{
+    int e = aprs_poll();
+    if (e & APRS_EV_ACK_DUE && !searching) {
+        int scanning = scan_mode() != SCAN_OFF;
+        voice_stop();
+        if (!scanning)
+            watch_pause(1);
+        aprs_send_ack(watch_slot(watch_rx_slot())->low_power);
+        if (scanning)
+            radio_retune();
+        else
+            watch_pause(0);
+    }
+    if (e & APRS_EV_NEW) {
+        const aprs_pkt_t *p = aprs_get(0);
+        debug_puts("APRS ");
+        debug_puts(p->from);
+        debug_puts(": ");
+        debug_puts(p->text);
+        debug_puts("\r\n");
+        apply_backlight(1);
+        last_key = now;
+        snd(SND_OPEN);
+        aprs_read_all();
+        if (aprs_sel >= 0 && ++aprs_sel >= aprs_count())
+            aprs_sel = -1;                      /* keep the picked station picked */
+    }
+    if (e && screen == SCR_APRS)
+        draw_aprs();
+}
+
 void ui_tick(void)
 {
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
 
-    if (!tx_active())
-        messages(now);
+    if (aprs_on != (screen == SCR_APRS)) {         /* the modem listens for what is on screen */
+        aprs_on = screen == SCR_APRS;
+        aprs_listen(aprs_on);
+    }
+    if (!tx_active()) {
+        if (aprs_on)
+            aprs_events(now);
+        else
+            messages(now);
+    }
     if (tx_active()) {
         if (tot_s[tot] && tx_seconds() >= tot_s[tot]) {
             tx_stop();
@@ -1262,7 +1580,7 @@ void ui_tick(void)
             draw_hint();
         }
         last_key = now;                 /* keeps the backlight on */
-    } else if (msg_receiving()) {
+    } else if (msg_receiving() || aprs_receiving()) {
         /* a packet is arriving: no retuning until it is complete */
     } else if (voice_busy()) {
         /* no retuning while a sound plays: each retune switches the BK4819's audio stage, which the
@@ -1311,11 +1629,16 @@ void ui_tick(void)
             draw_hint();
         }
     }
-    if (screen == SCR_MSG && tap_shown && !tap_pending())
-        draw_msg_compose();                     /* the cycling letter is settled */
-    if (screen == SCR_MSG && toast_until && (int32_t)(now - toast_until) >= 0) {
+    int typing = screen == SCR_MSG || screen == SCR_APRS || screen == SCR_EDIT;
+    if (typing && ((tap_shown && !tap_pending()) ||          /* the cycling letter is settled */
+                   (toast_until && (int32_t)(now - toast_until) >= 0))) {
         toast_until = 0;
-        draw_msg_compose();
+        if (screen == SCR_MSG)
+            draw_msg_compose();
+        else if (screen == SCR_APRS)
+            draw_aprs_compose();
+        else
+            draw_edit_field();
     }
     if (screen == SCR_MAIN && (int32_t)(now - next_status) >= 0) {
         next_status = now + 5000;

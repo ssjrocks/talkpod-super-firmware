@@ -105,7 +105,8 @@ void bk4819_init(void)
         bk4819_write((uint8_t)seq2[i][0], seq2[i][1]);
 }
 
-static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len;
+static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert;
+static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
 
 void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
@@ -237,17 +238,22 @@ uint16_t bk4819_irq(void)
  * REG_70 tone 2 on at gain 96; REG_72 the bit rate as a tone-2 frequency word; REG_58 FFSK
  * 1200/1800 for 1200 bit/s, plain FSK for 700 and 450; sync bytes 30 72 57 6C (4-byte sync); no
  * CRC (REG_5C 0x5625); 16 preamble bytes when sending. */
-static const uint16_t fsk_rate[] = {1200, 700, 450};
+static const uint16_t fsk_rate[] = {1200, 700, 450, 1200};
 
+/* BK_FSK_AFSK, for APRS (Bell 202, 1200/2200 Hz) receive: the chip has no Bell 202 demodulator, so
+   it runs its FFSK one and hands over the raw tone decisions; the sync word is four HDLC flags as
+   tones (seven bit times of one tone, one of the other). Which tone is which depends on where the
+   sender's NRZI started, so the caller alternates bk4819_fsk_invert() until a packet syncs. */
 static void fsk_regs(int tx, int len)
 {
-    static const uint16_t tone2[] = {12389, 7227, 4646};
+    static const uint16_t tone2[] = {12389, 7227, 4646, 12389};
+    int afsk = fsk_modem == BK_FSK_AFSK;
     uint16_t r59 = (uint16_t)((tx ? 15u << 4 : 0) | 1u << 3);   /* preamble length, 4-byte sync */
     bk4819_write(0x70, 0x00E0);
     bk4819_write(0x72, tone2[fsk_modem]);
-    bk4819_write(0x58, fsk_modem == BK_FSK_1200 ? 0x3F03 : 0x0301);
-    bk4819_write(0x5A, 0x3072);
-    bk4819_write(0x5B, 0x576C);
+    bk4819_write(0x58, afsk ? afsk_r58 : fsk_modem == BK_FSK_1200 ? 0x3F03 : 0x0301);
+    bk4819_write(0x5A, afsk ? 0xFEFE : 0x3072);
+    bk4819_write(0x5B, afsk ? 0xFEFE : 0x576C);
     bk4819_write(0x5C, 0x5625);
     if (!tx)
         bk4819_write(0x5E, 64u << 3 | 1);       /* FIFO almost full at 1 word */
@@ -259,8 +265,46 @@ static void fsk_regs(int tx, int len)
 
 static void fsk_arm(void)
 {
-    bk4819_write(0x59, 0xC000 | 1u << 3);
-    bk4819_write(0x59, 0x1000 | 1u << 3);       /* FSK receive on */
+    uint16_t r59 = (uint16_t)(1u << 3 | (fsk_invert ? 1u << 10 : 0));
+    bk4819_write(0x59, 0xC000 | r59);
+    bk4819_write(0x59, 0x1000 | r59);           /* FSK receive on */
+}
+
+void bk4819_fsk_invert(int on)
+{
+    fsk_invert = (uint8_t)on;
+    fsk_arm();
+}
+
+void bk4819_afsk_rx_mode(uint16_t r58)
+{
+    afsk_r58 = r58;
+    if (fsk_modem == BK_FSK_AFSK)
+        bk4819_fsk_setup(fsk_modem, fsk_rx_len);
+}
+
+/* Tones on the transmitter in place of the microphone (UV-K5 BK4819_TransmitTone: tone 1 at gain
+   66; REG_30 0xC3FA is stock's "TX of a generated tone"). bk4819_tone_hz() then changes the
+   frequency without a phase jump. */
+void bk4819_tone_tx(int on)
+{
+    static uint16_t r2b;
+    if (on) {
+        r2b = bk4819_read(0x2B);
+        bk4819_write(0x70, 0x8000 | 66u << 8);
+        bk4819_write(0x2B, 0x0005);             /* no TX 300 Hz high-pass, no pre-emphasis */
+        bk4819_write(0x30, 0xC3FA);
+    } else {
+        bk4819_write(0x70, 0x0000);
+        bk4819_write(0x2B, r2b);
+        if (fsk_modem != BK_FSK_OFF)
+            fsk_regs(0, fsk_rx_len);
+    }
+}
+
+void bk4819_tone_hz(uint16_t hz)
+{
+    bk4819_write(0x71, (uint16_t)(((uint32_t)hz * 103244U + 5000) / 10000));
 }
 
 void bk4819_fsk_setup(int modem, int rx_len)

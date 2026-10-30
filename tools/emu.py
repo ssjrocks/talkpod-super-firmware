@@ -122,6 +122,7 @@ def main():
     for item in args.fsk_rx:
         when, hx = item.split(":")
         data = bytes.fromhex(hx).ljust(46, b"\0")
+        data += b"\0" * (len(data) & 1)
         words = [data[i] | data[i + 1] << 8 for i in range(0, len(data), 2)]
         fsk.append([int(when), [0x0002] + [0x1000] * 5 + [0x2000], words])
     fsk.sort()
@@ -226,7 +227,7 @@ def main():
                 bkregs[bk["reg"]] = val
                 if bk["reg"] == 0x59 and val & 0x0800:
                     fsk_tx["done_at"] = st["ms"] + 430
-                bklog.append((st["ms"], "W", bk["reg"], val))
+                bklog.append((st["ms"], "W", bk["reg"], val, st["n"] * 2))
             elif bk["read"]:
                 bklog.append((st["ms"], "R", bk["reg"], bk["val"]))
             st["bk"] = None
@@ -360,6 +361,9 @@ def main():
 
     uc.hook_add(UC_HOOK_BLOCK, on_block)
     uc.hook_add(UC_HOOK_MEM_READ, on_read, begin=0x40000000, end=0x48001FFF)
+    uc.hook_add(UC_HOOK_MEM_READ,                                  # DWT cycle counter: 2 per instruction
+                lambda uc, a, addr, sz, v, _: uc.mem_write(addr, struct.pack("<I", st["n"] * 2 & 0xFFFFFFFF)),
+                begin=0xE0001004, end=0xE0001007)
     uc.hook_add(UC_HOOK_MEM_WRITE, on_write, begin=0x40000000, end=0x48001FFF)
     uc.hook_add(UC_HOOK_MEM_UNMAPPED, lambda uc, a, addr, s, v, _: print(f"!! unmapped {addr:#x}") or False)
     sp, reset = struct.unpack_from("<II", image, 0)
@@ -371,11 +375,12 @@ def main():
     if serial:
         log.append((st["ms"], serial.decode("latin-1")))
     if args.bk:
-        for ms, kind, reg, val in bklog:
+        for ms, kind, reg, val, *rest in bklog:
             if kind == "P":
                 print(f"{ms:6d} ms  pin {reg} = {val}")
             else:
-                print(f"{ms:6d} ms  BK {kind} 0x{reg:02X} {'=' if kind == 'W' else '->'} 0x{val:04X}")
+                cyc = f"  @{rest[0]}" if rest else ""
+                print(f"{ms:6d} ms  BK {kind} 0x{reg:02X} {'=' if kind == 'W' else '->'} 0x{val:04X}{cyc}")
     for ms, line in log:
         print(f"{ms:6d} ms  {line}")
     print(f"BK4819: {sum(1 for x in bklog if x[1] == 'W')} writes, {sum(1 for x in bklog if x[1] == 'R')} reads")

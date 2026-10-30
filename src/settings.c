@@ -4,7 +4,7 @@
 
 /* record: u16 magic, u8 length, u8 0, payload (zero-padded to 26 bytes), u16 CRC-16/XMODEM of the
    first 30 bytes. A record cut short by power loss fails the CRC and is skipped. */
-#define BASE    FLASH_SETTINGS
+#define BASE(a)  (FLASH_SETTINGS + (uint32_t)(a) * FLASH_SECTOR)
 #define REC     32
 #define RECORDS (FLASH_SECTOR / REC)
 #define MAGIC   0xA36C
@@ -28,14 +28,14 @@ static int erased(const uint8_t *r)
     return 1;
 }
 
-int settings_load(void *dst, uint32_t len)
+int settings_load(int area, void *dst, uint32_t len)
 {
     uint8_t r[REC];
     int found = 0;
     if (len > SETTINGS_MAX)
         return 0;
     for (uint32_t i = 0; i < RECORDS; i++) {
-        spiflash_read(BASE + i * REC, r, REC);
+        spiflash_read(BASE(area) + i * REC, r, REC);
         if (erased(r))
             break;
         /* a record from an older firmware is shorter: it fills the start, the rest keeps defaults */
@@ -48,19 +48,19 @@ int settings_load(void *dst, uint32_t len)
     return found;
 }
 
-int settings_save(const void *src, uint32_t len)
+int settings_save(int area, const void *src, uint32_t len)
 {
     uint8_t r[REC];
     uint32_t i;
     if (len > SETTINGS_MAX)
         return 0;
     for (i = 0; i < RECORDS; i++) {
-        spiflash_read(BASE + i * REC, r, REC);
+        spiflash_read(BASE(area) + i * REC, r, REC);
         if (erased(r))
             break;
     }
     if (i == RECORDS) {
-        if (!spiflash_erase(BASE))
+        if (!spiflash_erase(BASE(area)))
             return 0;
         i = 0;
     }
@@ -72,5 +72,5 @@ int settings_save(const void *src, uint32_t len)
     uint16_t crc = crc16(r, REC - 2);
     r[30] = (uint8_t)crc;
     r[31] = (uint8_t)(crc >> 8);
-    return spiflash_write(BASE + i * REC, r, REC);
+    return spiflash_write(BASE(area) + i * REC, r, REC);
 }

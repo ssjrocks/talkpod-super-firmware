@@ -34,6 +34,7 @@ C_SOURCES = \
   src/voice.c \
   src/tx.c \
   src/msg.c \
+  src/aprs.c \
   drivers/adc.c \
   gfx/font_5x8.c \
   gfx/font_7x13b.c \

@@ -21,7 +21,7 @@ between the two (below).
 
 | Pin | Use |
 |---|---|
-| PA0 | input (unknown) |
+| PA0 | analog input, ADC channel 0 (stock sets its sample time with channel 1's). Not received audio: sampled at 85 kHz it is a steady level, about 163 of 4095 idle and 28 with a local 1 kHz tone (2026-10-30), so it looks like a filtered audio level (VOX or similar). No raw audio reaches the MCU. |
 | PA1 | battery voltage (ADC) |
 | PA2, PA3, PC13 | BK4819 SCK, SDA (bidirectional), CS. PA3 is also BK1080 SDA |
 | PA4-PA7 | W25Q16 SPI flash: CS, SCK, MISO, MOSI (SPI0, AF0) |
