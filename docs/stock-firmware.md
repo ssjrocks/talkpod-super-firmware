@@ -114,3 +114,12 @@ bits 10, 11, 14, 15 are CTCSS/DCS results (0x80095ec, 0x8009b40).
 Search (0x800af20 / 0x800af46): speaker off, REG_3F/59/70/58 = 0/2028/0/0, REG_32 = 8245; a result
 when REG_0D bit 15 is clear: (REG_0D & 7FF) << 16 | REG_0E; REG_32 = 8244 stops. Two results within
 250 Hz are averaged; results outside the selected band are discarded.
+
+## Squelch timing (measured on the radio, v0.82 shell 'm')
+
+After a retune onto a strong signal, RSSI (REG_67) and the noise indicator (REG_65 & 7F) settle
+within 10-30 ms (noise 10-32 on a signal, 53-69 without), but REG_0C bit 1 rises only after
+~40 ms + 5 ms per step of the squelch open delay, REG_4E bits 13:11 (stock 0x6F15: delay 5, 65 ms;
+delay 2: 50 ms; delay 1: 45 ms). No false opens were seen at delays 0-5 without a signal. This
+radio's RSSI reads about -95 to -125 dBm with no signal, above the calibrated open threshold
+(-120 dBm at level 1, 476 MHz), so the noise criterion is what keeps the squelch closed.
