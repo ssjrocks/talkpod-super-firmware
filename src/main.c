@@ -12,16 +12,17 @@
 #include "ui.h"
 #include "voice.h"
 #include "tx.h"
+#include "splash.h"
 
 /* talkpod-firmware checks these markers before flashing */
 const char __attribute__((used, section(".rodata.markers"))) fw_marker1[] = "PROGRAMJC37U";
 const char __attribute__((used, section(".rodata.markers"))) fw_marker2[] = "TalkpodA36Plus";
-const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.97";
+const char __attribute__((used, section(".rodata.markers"))) fw_version[]  = " V0.98";
 
 int main(void)
 {
     debug_init(57600);
-    debug_puts("\r\n=== A36SE FW v0.97 ===\r\nbootloader tag ");
+    debug_puts("\r\n=== A36SE FW v0.98 ===\r\nbootloader tag ");
     debug_write((const uint8_t *)0x08000300U, 7);
     debug_puts("\r\n");
 
@@ -34,6 +35,7 @@ int main(void)
     bk4819_init();
     board_rf_path(0, RF_OFF);       /* as stock before its first RX: REG_33 = 0 */
     spiflash_init();
+    splash_play();
     adc_init();
     radio_init();
     tx_init();
