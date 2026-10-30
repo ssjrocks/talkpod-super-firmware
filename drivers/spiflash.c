@@ -80,7 +80,8 @@ void spiflash_read(uint32_t addr, void *dst, uint32_t len)
 
 static int own(uint32_t addr, uint32_t len)
 {
-    return FLASH_WRITES && addr >= FLASH_OWN_START && len <= FLASH_OWN_END - addr;
+    return FLASH_WRITES && ((addr >= FLASH_OWN_START && len <= FLASH_OWN_END - addr) ||
+                            (addr < FLASH_WINDOW_END && len <= FLASH_WINDOW_END - addr));
 }
 
 static void command(uint8_t cmd, uint32_t addr, int with_addr)

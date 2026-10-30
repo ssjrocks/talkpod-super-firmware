@@ -16,7 +16,9 @@
 
 static uint8_t mode, holding, am, narrow;
 static int8_t dir;
-static uint32_t lo, hi, step, tuned_at, closed_since;
+static uint32_t lo, hi, step, tuned_at, closed_since, held_at;
+static uint8_t tone_wanted;
+#define TONE_WAIT_MS 500
 static int channel;
 
 /* frequencies locked out of the scan (static, interference) until cleared or power-off */
@@ -50,6 +52,8 @@ static void retune(void)
             if (!locked(f))
                 break;
         }
+        tone_wanted = 0;
+        radio_set_tone(TONE_NONE, 0, 0);
         radio_tune(f, am, narrow);
     } else {
         channel_t ch;
@@ -64,6 +68,8 @@ static void retune(void)
                 break;
         }
         channel = n;
+        tone_wanted = ch.rx_tone.type != TONE_NONE;
+        radio_set_tone(ch.rx_tone.type, ch.rx_tone.value, ch.scramble);
         radio_tune(ch.rx, channel_is_am(ch.rx), ch.narrow);
     }
     tuned_at = millis();
@@ -148,8 +154,9 @@ int scan_poll(void)
         return SCAN_EV_NONE;
     radio_poll();
     if (!holding) {
-        if (radio_open()) {
+        if (radio_busy()) {
             holding = 1;
+            held_at = millis();
             closed_since = 0;
             return SCAN_EV_HOLD;
         }
@@ -158,7 +165,12 @@ int scan_poll(void)
         retune();
         return mode == SCAN_OFF ? SCAN_EV_RESUME : SCAN_EV_STEP;
     }
-    if (radio_open()) {
+    if (tone_wanted && !radio_open() && millis() - held_at >= TONE_WAIT_MS) {
+        holding = 0;                        /* a carrier without this channel's tone */
+        retune();
+        return SCAN_EV_RESUME;
+    }
+    if (radio_busy()) {
         closed_since = 0;
     } else if (!closed_since) {
         closed_since = millis() | 1;

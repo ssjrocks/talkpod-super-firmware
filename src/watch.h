@@ -2,6 +2,7 @@
 #define WATCH_H
 
 #include <stdint.h>
+#include "channels.h"
 
 /* Two receive slots, A and B, each a channel or a VFO frequency. With dual watch on, the receiver
    alternates between them and stays on one while it has a signal. */
@@ -13,7 +14,9 @@ typedef struct {
     uint8_t low_power;          /* TX power for this slot; set from the channel when it changes */
     /* resolved by watch_update() */
     uint32_t freq;
-    uint8_t am, narrow;
+    uint32_t tx;                /* 0: transmit off on this channel */
+    tone_t rx_tone, tx_tone;
+    uint8_t am, narrow, bcl, scramble;
     char name[13];
 } slot_t;
 

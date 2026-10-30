@@ -4,8 +4,8 @@
  *
  * Audio is IMA ADPCM, high nibble first, 16-bit predictor. TMR1 counts at 48 MHz with a period of
  * 978 clocks (49 kHz carrier) and interrupts every 6 periods (repetition counter 5): 8180 samples
- * per second, decoded in the interrupt. A 2 KB ring buffer, refilled from flash by voice_poll() in
- * the main loop, covers 0.5 s of stalls. PA11 idles high (as the bootloader leaves it), so playback
+ * per second, decoded in the interrupt. A 1 KB ring buffer, refilled from flash by voice_poll() in
+ * the main loop, covers 0.25 s of stalls. PA11 idles high (as the bootloader leaves it), so playback
  * ramps from 100 % duty to the middle and back to avoid a click.
  */
 #include "voice.h"
@@ -28,7 +28,7 @@
 #define PERIOD  978
 #define MID     (PERIOD / 2)
 #define RAMP    160                     /* samples: 20 ms */
-#define BUF     2048
+#define BUF     1024             /* 250 ms of sound */
 
 /* pack: "SNDP", u16 count, u16 sample rate, then count x {u16 id, u16 0, u32 offset, u32 length} */
 #define MAGIC   0x50444E53U

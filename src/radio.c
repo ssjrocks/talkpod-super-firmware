@@ -11,7 +11,10 @@ static uint8_t corr_400[16], corr_130[16], corr_200[16], corr_300[16];  /* per-f
 static uint8_t noise[16];                   /* 0xF210: [5 + band] threshold, [9] hysteresis */
 
 static uint32_t freq = 47690000;
-static uint8_t am, narrow, level = 1, monitor, open, muted, hold;
+static uint8_t am, narrow, level = 1, monitor, open, muted, hold, carrier;
+static uint8_t tone, scramble;
+static uint16_t tone_value;
+static int tone_heard(void);
 
 void radio_init(void)
 {
@@ -103,6 +106,13 @@ void radio_audio_hold(int who, int on)
     set_open(open);
 }
 
+void radio_set_tone(int type, uint16_t value, int scramble_type)
+{
+    tone = (uint8_t)type;
+    tone_value = value;
+    scramble = (uint8_t)scramble_type;
+}
+
 void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
 {
     uint16_t r78, r4f;
@@ -111,7 +121,8 @@ void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
     narrow = (uint8_t)narrow_bw;
     muted = 0;
     squelch_regs(&r78, &r4f);
-    bk4819_rx(freq, narrow, r78, r4f);
+    carrier = 0;
+    bk4819_rx(freq, narrow, r78, r4f, am ? BK_TONE_NONE : tone, tone_value, am ? 0 : scramble);
     board_rf_path(freq, RF_RX);
     set_open(monitor || level == 0);
 }
@@ -145,7 +156,7 @@ int radio_squelch(void)
 void radio_set_monitor(int on)
 {
     monitor = (uint8_t)on;
-    set_open(monitor || level == 0 || bk4819_squelch_open());
+    set_open(monitor || level == 0 || (carrier && tone_heard()));
 }
 
 int radio_monitor(void)
@@ -153,11 +164,25 @@ int radio_monitor(void)
     return monitor;
 }
 
+/* the channel's receive tone is there (or it has none): REG_0C bit 10 CTCSS, 14 DCS, 15 inverted DCS */
+static int tone_heard_in(uint16_t r0c)
+{
+    static const uint16_t bit[] = {0, 0x0400, 0x4000, 0x8000};
+    return am || tone == BK_TONE_NONE || (r0c & bit[tone & 3]);
+}
+
+static int tone_heard(void)
+{
+    return tone_heard_in(bk4819_read(0x0C));
+}
+
 int radio_poll(void)
 {
     if (muted)
         return 0;
-    int want = monitor || level == 0 || bk4819_squelch_open();
+    uint16_t r0c = bk4819_read(0x0C);
+    carrier = (r0c & 0x0002) != 0;
+    int want = monitor || level == 0 || (carrier && tone_heard_in(r0c));
     if (want == open)
         return 0;
     set_open(want);
@@ -167,6 +192,11 @@ int radio_poll(void)
 int radio_open(void)
 {
     return open;
+}
+
+int radio_busy(void)
+{
+    return open || carrier;
 }
 
 int radio_rssi_dbm(void)

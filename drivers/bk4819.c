@@ -110,7 +110,56 @@ static uint16_t pocsag_baud = 1200;
 static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
 
-void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
+/* CTCSS / DCS, as stock (0x80014d4, 0x8001334, 0x800291c, measured with tools/re/call_stock.py):
+   CTCSS: REG_51 0x9000, REG_07 = Hz x 20.64888 (CTC1); then REG_07 0x21CD and REG_52 0x0292 set the
+   55 Hz tail detector (CTC2). DCS: REG_51 0x8000 (0xA000 sends the inverted code), REG_07 0x0AD7
+   (134.4 bit/s), REG_08 the 23-bit Golay codeword in two halves. Receive without a tone keeps stock's
+   55 Hz set-up (CTC1 0x0471); transmit without one has REG_51 0. Received tones show in REG_0C:
+   bit 10 CTCSS, 14 DCS, 15 inverted DCS. */
+static uint32_t golay(uint16_t code)
+{
+    uint32_t cw = 0x800U | code, w = cw;
+    for (int i = 0; i < 12; i++) {
+        w <<= 1;
+        if (w & 0x1000)
+            w ^= 0x08EA;
+    }
+    return cw | (w & 0x0FFE) << 11;
+}
+
+static void tone_regs(int type, uint16_t value, int tx)
+{
+    if (type == BK_TONE_DCS || type == BK_TONE_DCS_INV) {
+        uint32_t cw = golay(value);
+        bk4819_write(0x51, tx && type == BK_TONE_DCS_INV ? 0xA000 : 0x8000);
+        bk4819_write(0x07, 0x0AD7);
+        bk4819_write(0x08, (uint16_t)(cw & 0x0FFF));
+        bk4819_write(0x08, (uint16_t)(0x8000 | (cw >> 12 & 0x0FFF)));
+        return;
+    }
+    if (tx && type == BK_TONE_NONE)
+        return;
+    bk4819_write(0x51, 0x9000);
+    bk4819_write(0x07, type == BK_TONE_CTCSS ? (uint16_t)(((uint32_t)value * 206488U + 50000U) / 100000U)
+                                             : 0x0471);
+    bk4819_write(0x07, 0x21CD);
+    bk4819_write(0x52, 0x0292);
+}
+
+/* the BK4819's voice inversion scrambler (REG_31 bit 1, REG_71 its frequency), types 1 and 2 */
+static void scramble_regs(int type)
+{
+    uint16_t r31 = bk4819_read(0x31);
+    if (type) {
+        bk4819_write(0x71, (uint16_t)(0x68DC + (type - 1) * 1032));
+        bk4819_write(0x31, r31 | 2);
+    } else if (r31 & 2) {
+        bk4819_write(0x31, (uint16_t)(r31 & ~2));
+    }
+}
+
+void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
+               int scramble)
 {
     bk4819_write(0x37, 0x1F0F);
     bk4819_write(0x30, 0x0000);
@@ -119,10 +168,8 @@ void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f)
     bk4819_write(0x43, narrow ? 0x4048 : 0x3028);
     bk4819_write(0x78, reg78);                   /* squelch RSSI open << 8 | close */
     bk4819_write(0x4F, reg4f);                   /* squelch noise close << 8 | open */
-    bk4819_write(0x51, 0x9000);
-    bk4819_write(0x07, 0x0471);
-    bk4819_write(0x07, 0x21CD);
-    bk4819_write(0x52, 0x0292);
+    tone_regs(tone, tone_value, 0);
+    scramble_regs(scramble);
     bk4819_write(0x30, 0x0000);
     bk4819_write(0x28, 0x6B38);                  /* RX audio expander, as stock 0x8004980 */
     bk4819_write(0x30, 0x0200);
@@ -138,15 +185,17 @@ void bk4819_off(void)
 
 /* Stock transmit start (0x8009b70, channel without tones), with the PA power (REG_36) written last:
    the caller has already switched the RF path to transmit. */
-void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36)
+void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value, int scramble)
 {
     bk4819_write(0x37, 0x1D0F);
     bk4819_write(0x30, 0x0000);
     bk4819_write(0x38, (uint16_t)freq_10hz);
     bk4819_write(0x39, (uint16_t)(freq_10hz >> 16));
     bk4819_write(0x43, narrow ? 0x4048 : 0x3028);
-    bk4819_write(0x51, 0x0000);                  /* no CTCSS / DCS */
+    bk4819_write(0x51, 0x0000);
     bk4819_write(0x52, 0x0000);
+    tone_regs(tone, tone_value, 1);
+    scramble_regs(scramble);
     bk4819_write(0x7D, (uint16_t)((bk4819_read(0x7D) & 0xFFE0) | 0x1A));   /* mic gain, as stock */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xC1FE);                  /* TX: PLL, PA gain, mic ADC, TX DSP */

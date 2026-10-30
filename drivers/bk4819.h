@@ -8,10 +8,12 @@ enum { BK_AF_MUTE, BK_AF_FM, BK_AF_AM };
 void     bk4819_init(void);                     /* GPIO + the stock register init */
 void     bk4819_write(uint8_t reg, uint16_t val);
 uint16_t bk4819_read(uint8_t reg);
-void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f);
-                                                /* stock receive start (no tone squelch) */
+enum { BK_TONE_NONE, BK_TONE_CTCSS, BK_TONE_DCS, BK_TONE_DCS_INV };   /* tone value: Hz x 10 / 9-bit DCS code */
+void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
+                   int scramble);               /* stock receive start; scramble 0 off, 1-2 */
 void     bk4819_off(void);                      /* REG_30 = 0: receiver and transmitter off */
-void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36);   /* transmit on */
+void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value,
+                   int scramble);               /* transmit on */
 void     bk4819_pa_off(void);
 void     bk4819_af(int type);                   /* audio output: mute, FM or AM */
 int      bk4819_rssi_dbm(void);

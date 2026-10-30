@@ -203,7 +203,7 @@ static int transmit(int n, uint32_t freq, int narrow, int low_power)
         return -2;
     if (!tx_allowed(freq))
         return -1;
-    if (!tx_start(freq, narrow, low_power))
+    if (!tx_start(freq, narrow, low_power, BK_TONE_NONE, 0, 0))
         return 0;
     tone = 1200;
     bk4819_tone_hz(tone);

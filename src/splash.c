@@ -1,6 +1,8 @@
-/* Boot splash: an animation from tools/splash.py at FLASH_SPLASH, played once; any key skips it.
- * Each frame is a changed rectangle with its own palette and PackBits-coded indices (format in
- * tools/splash.py), streamed from the SPI flash to the LCD.
+/* Boot splash: an animation from tools/splash.py at FLASH_SPLASH, played once (or as many times as
+ * an A36H header says); any key skips it. Each frame is a changed rectangle with its own palette and
+ * PackBits-coded indices (format in tools/splash.py), streamed from the SPI flash to the LCD.
+ * Headers: "A36G", u16 frames, u16 background, u32 total bytes (12 bytes); "A36H" adds u8 plays and
+ * three reserved bytes (16). The first frame covers the whole screen, so a repeat starts cleanly.
  */
 #include "splash.h"
 #include "keypad.h"
@@ -66,21 +68,27 @@ static int wait_until(uint32_t until)
 
 int splash_play(void)
 {
-    uint8_t head[12];
+    uint8_t head[16];
     static uint16_t pal[256];
     spiflash_read(FLASH_SPLASH, head, sizeof head);
-    if (head[0] != 'A' || head[1] != '3' || head[2] != '6' || head[3] != 'G')
+    if (head[0] != 'A' || head[1] != '3' || head[2] != '6' || (head[3] != 'G' && head[3] != 'H'))
         return 0;
     uint16_t frames = (uint16_t)(head[4] | head[5] << 8), bg = (uint16_t)(head[6] | head[7] << 8);
     uint32_t total = head[8] | head[9] << 8 | (uint32_t)head[10] << 16 | (uint32_t)head[11] << 24;
-    if (!frames || total > FLASH_SETTINGS - FLASH_SPLASH)
+    uint32_t first = FLASH_SPLASH + (head[3] == 'H' ? 16 : 12);
+    uint8_t plays = head[3] == 'H' && head[12] ? head[12] : 1;
+    if (!frames || total > FLASH_SPLASH_SIZE)
         return 0;
-    faddr = FLASH_SPLASH + sizeof head;
+    faddr = first;
     fpos = sizeof fbuf;
     lcd_fill(0, 0, LCD_W, LCD_H, bg);
     lcd_backlight(1);
     uint32_t due = millis();
-    for (uint16_t f = 0; f < frames; f++) {
+    for (uint32_t f = 0; f < (uint32_t)frames * plays; f++) {
+        if (f && f % frames == 0) {             /* the next play: back to the first frame */
+            faddr = first;
+            fpos = sizeof fbuf;
+        }
         uint8_t fh[8];
         uint32_t len;
         read_bytes(fh, sizeof fh);

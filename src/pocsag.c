@@ -174,7 +174,7 @@ int pocsag_send(uint32_t ric, const char *text, uint32_t freq, int narrow, int l
     }
     if (!tx_allowed(freq))
         return -1;
-    if (!tx_start(freq, narrow, low_power))
+    if (!tx_start(freq, narrow, low_power, BK_TONE_NONE, 0, 0))
         return 0;
     delay_ms(50);
     bk4819_fsk_tx_invert(pager_cfg.invert);

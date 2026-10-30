@@ -215,7 +215,7 @@ static void draw_slot(int i)
         lcd_fill(2, y - 2, 124, 1, C_PANEL);
 
     const char *name = s->name;
-    uint32_t f = s->freq;
+    uint32_t f = sel && tx_active() && s->tx ? s->tx : s->freq;   /* while transmitting: where to */
     channel_t ch;
     if (scanning && channel_read(scan_channel(), &ch)) {
         put_dec(put_str(chip, "CH "), (uint32_t)scan_channel());
@@ -235,8 +235,14 @@ static void draw_slot(int i)
     int cw = gfx_text_width(&font_6x10, chip) + 4;
     gfx_rrect(5, y + 3, cw, 12, chip_bg);
     gfx_text(7, y + 4, &font_6x10, chip, chip_fg, chip_bg);
-    char mode[8], fit[13];
-    put_str(put_str(mode, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
+    char mode[16], fit[13], *mp = mode;
+    if (!s->tx)
+        mp = put_str(mp, "X ");                             /* transmit off */
+    else if (s->tx != s->freq)
+        mp = put_str(mp, s->tx > s->freq ? "+ " : "- ");    /* repeater shift / split */
+    mp = put_str(put_str(mp, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
+    if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
+        put_str(mp, s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
     int mx = 122 - gfx_text_width(&font_5x8, mode);
     int room = mx - 3 - (cw + 9);                           /* the name stops short of the marks */
     const font_t *nf = gfx_text_width(&font_7x13b, name) <= room ? &font_7x13b : &font_6x10;
@@ -982,17 +988,37 @@ static int digit_of(int key)
     }
 }
 
+static uint8_t ptt_paused;              /* PTT took the receiver (not when it was refused) */
+
+static void ptt_refused(const char *why)
+{
+    show_toast(why);
+    snd(SND_CANCEL);
+    draw_hint();
+}
+
 static void ptt_down(void)
 {
-    slot_t *s = watch_slot(watch_selected());
+    int sel = watch_selected();
+    slot_t *s = watch_slot(sel);
     entry_len = 0;
+    if (!s->tx) {
+        ptt_refused("TX off on this channel");
+        return;
+    }
+    if (s->bcl && watch_rx_slot() == sel && radio_busy()) {
+        ptt_refused("Channel busy");         /* busy channel lockout */
+        return;
+    }
     stop_activity();
     voice_stop();
     watch_pause(1);
+    ptt_paused = 1;
     tx_timed_out = 0;
-    if (!tx_start(s->freq, s->narrow, s->low_power)) {
+    if (!tx_start(s->tx, s->narrow, s->low_power, s->tx_tone.type, s->tx_tone.value, s->scramble)) {
         watch_pause(0);
-        show_toast(tx_allowed(s->freq) ? "TX failed" : "TX not allowed here");
+        ptt_paused = 0;
+        show_toast(tx_allowed(s->tx) ? "TX failed" : "TX not allowed here");
         draw_main();
         return;
     }
@@ -1008,7 +1034,10 @@ static void ptt_up(void)
         debug_puts("TX off\r\n");
     }
     tx_timed_out = 0;
-    watch_pause(0);
+    if (ptt_paused) {
+        ptt_paused = 0;
+        watch_pause(0);
+    }
     draw_main();
 }
 
@@ -1142,7 +1171,7 @@ static void send_message(void)
     tap_key = 0xFF;
     lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
     gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
-    int r = msg_send(comp, s->freq, s->narrow, s->low_power);
+    int r = msg_send(comp, s->tx, s->narrow, s->low_power);
     watch_pause(0);
     if (r > 0) {
         comp_len = 0;
@@ -1211,8 +1240,8 @@ static void aprs_send(void)
     tap_key = 0xFF;
     lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
     gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
-    int r = comp_len ? aprs_message(p->from, comp, s->freq, s->narrow, s->low_power)
-                     : aprs_beacon(s->freq, s->narrow, s->low_power);
+    int r = comp_len ? aprs_message(p->from, comp, s->tx, s->narrow, s->low_power)
+                     : aprs_beacon(s->tx, s->narrow, s->low_power);
     watch_pause(0);
     if (r > 0) {
         debug_puts("APRS sent\r\n");
@@ -1281,7 +1310,7 @@ static void pager_send(void)
     tap_key = 0xFF;
     lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
     gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
-    int r = pocsag_send(pager_target(), comp, s->freq, s->narrow, s->low_power);
+    int r = pocsag_send(pager_target(), comp, s->tx, s->narrow, s->low_power);
     watch_pause(0);
     if (r > 0) {
         debug_puts("page sent\r\n");
@@ -1763,10 +1792,25 @@ static void pager_events(uint32_t now)
         draw_pager();
 }
 
+/* the PC wrote channels or settings through program mode (src/progmode.c) */
+static volatile uint8_t reload;
+
+void progmode_changed(void)
+{
+    reload = 1;
+}
+
 void ui_tick(void)
 {
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
+
+    if (reload && !tx_active()) {
+        reload = 0;
+        watch_update(watch_selected() ^ 1);
+        watch_update(watch_selected());
+        redraw();
+    }
 
     int want = screen == SCR_APRS ? 1 : screen == SCR_PAGER ? 2 : 0;
     if (want != data_mode) {                    /* the modem listens for what is on screen */

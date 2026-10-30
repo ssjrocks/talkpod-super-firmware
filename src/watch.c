@@ -11,10 +11,11 @@
 #define DWELL_MS      80
 #define NOISE_MARGIN  6
 #define HANG_MS       1000
+#define TONE_WAIT_MS  500           /* a carrier without the slot's tone: move on after this */
 
 static slot_t slots[2];
 static uint8_t selected, dual = 1, rx, holding, paused;
-static uint32_t tuned_at, closed_since;
+static uint32_t tuned_at, closed_since, held_at;
 
 static void resolve(slot_t *s)
 {
@@ -23,13 +24,20 @@ static void resolve(slot_t *s)
         if (s->freq != ch.rx)
             s->low_power = ch.low_power;        /* a new channel brings its own power */
         s->freq = ch.rx;
+        s->tx = ch.tx;
+        s->rx_tone = ch.rx_tone;
+        s->tx_tone = ch.tx_tone;
+        s->bcl = ch.bcl;
+        s->scramble = ch.scramble;
         s->am = (uint8_t)channel_is_am(ch.rx);
         s->narrow = ch.narrow;
         for (int i = 0; i < 13; i++)
             s->name[i] = ch.name[i];
     } else {
         s->is_channel = 0;
-        s->freq = s->vfo;
+        s->freq = s->tx = s->vfo;
+        s->rx_tone.type = s->tx_tone.type = TONE_NONE;
+        s->bcl = s->scramble = 0;
         s->am = s->vfo_am;
         s->narrow = s->vfo_narrow;
         s->name[0] = 0;
@@ -39,6 +47,7 @@ static void resolve(slot_t *s)
 static void tune(int i)
 {
     rx = (uint8_t)i;
+    radio_set_tone(slots[i].rx_tone.type, slots[i].rx_tone.value, slots[i].scramble);
     radio_tune(slots[i].freq, slots[i].am, slots[i].narrow);
     tuned_at = millis();
 }
@@ -129,7 +138,13 @@ int watch_poll(void)
         return WATCH_EV_NONE;
     int changed = radio_poll();
     if (holding) {
-        if (radio_open()) {
+        if (!radio_open() && millis() - held_at >= TONE_WAIT_MS && slots[rx].rx_tone.type != TONE_NONE &&
+            !radio_monitor()) {
+            holding = 0;                    /* someone else's traffic: their tone isn't ours */
+            tune(rx ^ 1);
+            return WATCH_EV_NONE;
+        }
+        if (radio_busy()) {
             closed_since = 0;
         } else if (!closed_since) {
             closed_since = millis() | 1;
@@ -139,10 +154,11 @@ int watch_poll(void)
         }
         return changed ? (radio_open() ? WATCH_EV_OPEN : WATCH_EV_CLOSE) : WATCH_EV_NONE;
     }
-    if (radio_open()) {
+    if (radio_busy()) {
         holding = 1;
+        held_at = millis();
         closed_since = 0;
-        return WATCH_EV_OPEN;
+        return radio_open() ? WATCH_EV_OPEN : WATCH_EV_NONE;
     }
     if (radio_monitor() || radio_squelch() == 0)
         return WATCH_EV_NONE;               /* always open: no alternating */

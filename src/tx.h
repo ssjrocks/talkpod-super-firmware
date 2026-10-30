@@ -7,7 +7,8 @@
    see README. Also not where the BK4819 cannot synthesise (660-840 MHz). */
 void     tx_init(void);                 /* reads the PA calibration from flash */
 int      tx_allowed(uint32_t freq_10hz);
-int      tx_start(uint32_t freq_10hz, int narrow, int low_power);    /* 0 if not allowed */
+int      tx_start(uint32_t freq_10hz, int narrow, int low_power, int tone, uint16_t tone_value, int scramble);
+                                        /* 0 if not allowed; tone BK_TONE_* (data modes: none) */
 void     tx_stop(void);                 /* PA off, transmitter off, RF path off; then retune to RX */
 int      tx_active(void);
 uint32_t tx_seconds(void);

@@ -19,7 +19,7 @@
  *   v LO HI ST N  survey LO..HI Hz in ST Hz steps: per step, 80 ms after the retune, print kHz,
  *                 squelch bit, noise (REG_65), RSSI dBm, glitch (REG_63); any byte stops it
  *   i             one line about this firmware for tools such as Talkpod Manager:
- *                 "fw=TSF ver=1.00 board=HWVER02 splash=00120000+000C0000 splash_fmt=A36G"
+ *                 "fw=TSF ver=1.10 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
  *   G             play the boot splash now (a preview after uploading one), then "ok" or
  *                 "no splash"; the screen returns to what it showed
  * See docs/serial-interface.md.
@@ -202,7 +202,8 @@ static void bin_poll(void)
         if (crc16(0, bin, n) != (bin[n] << 8 | bin[n + 1]))
             debug_puts("crc\r\n");
         else
-            debug_puts(spiflash_write(bin_addr, bin, n) ? "ok\r\n" : "refused\r\n");
+            debug_puts(bin_addr >= FLASH_OWN_START && spiflash_write(bin_addr, bin, n) ? "ok\r\n"
+                                                                                  : "refused\r\n");
         bin_len = 0;
     } else if (millis() - bin_since > 2000) {
         debug_puts("timeout\r\n");
@@ -269,9 +270,11 @@ void shell_poll(void)
         debug_putc((char)crc);
         break;
     }
-    case 'E':
-        debug_puts(spiflash_erase(parse_num(&p, 16)) ? "ok\r\n" : "refused\r\n");
+    case 'E': {                             /* the shell writes only the firmware's own region */
+        uint32_t addr = parse_num(&p, 16);
+        debug_puts(addr >= FLASH_OWN_START && spiflash_erase(addr) ? "ok\r\n" : "refused\r\n");
         break;
+    }
     case 'W': {
         uint32_t addr = parse_num(&p, 16), len = parse_num(&p, 10);
         if (len == 0 || len > 256) {
@@ -370,8 +373,8 @@ void shell_poll(void)
         debug_puts(" splash=");
         debug_hex32(FLASH_SPLASH);
         debug_putc('+');
-        debug_hex32(FLASH_SETTINGS - FLASH_SPLASH);
-        debug_puts(" splash_fmt=A36G\r\n");
+        debug_hex32(FLASH_SPLASH_SIZE);
+        debug_puts(" splash_fmt=A36G,A36H\r\n");
         break;
     case 'G': {
         int played = splash_play();

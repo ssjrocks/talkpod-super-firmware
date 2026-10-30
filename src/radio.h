@@ -6,13 +6,15 @@
 /* Receive core: tuning, squelch from the radio's own calibration, audio, search. */
 void radio_init(void);                      /* loads calibration and the squelch level setting */
 void radio_tune(uint32_t freq_10hz, int am, int narrow);
+void radio_set_tone(int type, uint16_t value, int scramble);   /* for the next radio_tune(): BK_TONE_* */
 uint32_t radio_freq(void);
 void radio_set_squelch(int level);          /* 0 = always open, 1-9 as stock */
 int  radio_squelch(void);
 void radio_set_monitor(int on);
 int  radio_monitor(void);
 int  radio_poll(void);                      /* every 20 ms; 1 when the audio opened or closed */
-int  radio_open(void);
+int  radio_open(void);                      /* audio on: a signal with the right tone, or monitor */
+int  radio_busy(void);                      /* a signal is there, whatever its tone */
 int  radio_rssi_dbm(void);
 void radio_mute(void);                      /* audio off until the next radio_tune() */
 enum { HOLD_VOICE = 1, HOLD_DATA = 2 };

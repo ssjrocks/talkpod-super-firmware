@@ -190,7 +190,7 @@ static int transmit(const uint8_t *pkt, uint32_t freq, int narrow, int low_power
 {
     if (!tx_allowed(freq))
         return -1;
-    if (!tx_start(freq, narrow, low_power))
+    if (!tx_start(freq, narrow, low_power, BK_TONE_NONE, 0, 0))
         return 0;
     delay_ms(50);
     int sent = bk4819_fsk_send(pkt, PKT_LEN, narrow);
