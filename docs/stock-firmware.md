@@ -91,3 +91,26 @@ wake-up set up, MCU into standby.
 Other: RSSI read REG_67 (0x80086b0), status REG_0C (0x80086c2 ...), frequency scan result REG_0D/0E
 (0x8009434), CTCSS/DCS scan results REG_68/69/6A (0x800955c), squelch REG_78/4F (0x80098f4), TX
 power REG_36 (0x8009aa4), FSK modem setup REG_58/59/5A-5F/70/72/3F (0x80094aa, 0x80096c8, 0x8009512).
+
+## External flash (SPI0, W25Q16-compatible; this radio: Zbit ZB25VQ16, ID 5E 60 15)
+
+| Address | Contents |
+|---|---|
+| 0x0000-0x3FFF | 512 channels x 32 bytes (CHIRP mml_jc8810 layout: lbcd rx[4], tx[4] in 10 Hz units; flags byte 15: bit 6 narrow, bit 2 scan; name at 20, 12 chars) |
+| 0x9000 | settings; squelch level 0-9 in the low nibble of 0x9000 |
+| 0xF000-0xF0B0 | per-radio tables loaded to RAM 0x20000014-0x20000094 (TX power, not decoded yet) |
+| 0xF0C0 / 0xF0D0 | squelch RSSI open / close per level 0-9 (raw: dBm = raw / 2 - 160) |
+| 0xF0E0 | squelch correction, 400 MHz up, per 10 MHz (index clamped at 12) |
+| 0xF0F0 | correction, 130-200 MHz, per 5 MHz (clamped at 9) |
+| 0xF100 | correction, 200-300 MHz, per 5 MHz (clamped at 12) |
+| 0xF110 | correction, 300-400 MHz, per 5 MHz from 350 (index 0 below 350) |
+| 0xF210 | noise: [5 + band] threshold (band: 0 = 400 up, 1 = 130-200, 2 = 200-300, 3 = 300-400), [9] hysteresis |
+| 0xF230 | band table, 5 bytes each: enable, low MHz, high MHz (BCD): 136-180, 400-520, 200-260, 350-400 |
+
+Squelch (0x80098f4): REG_78 = (open[L] - corr) << 8 | (close[L] - corr), REG_4F = n << 8 | (n - hyst)
+with n = noise[5 + band] & 0x7F. REG_0C bit 1 is the chip's squelch-open decision (0x80086c2);
+bits 10, 11, 14, 15 are CTCSS/DCS results (0x80095ec, 0x8009b40).
+
+Search (0x800af20 / 0x800af46): speaker off, REG_3F/59/70/58 = 0/2028/0/0, REG_32 = 8245; a result
+when REG_0D bit 15 is clear: (REG_0D & 7FF) << 16 | REG_0E; REG_32 = 8244 stops. Two results within
+250 Hz are averaged; results outside the selected band are discarded.
