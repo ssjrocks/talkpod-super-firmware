@@ -38,19 +38,34 @@ void board_init(void)
     gpio_mode_set(RF_PC_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, RF_PC14_PIN | RF_PC15_PIN);
 }
 
-/* Stock 0x8008710 for RX and off. Band parity is all RX needs: even (below 300 MHz, airband
-   included) uses one front end, odd (300 MHz and up) the other. Transmit paths are left out on
-   purpose until TX is written. On HWVER02 stock drives PB1 as TMR3 CH4 PWM (period 256) and sets
-   it to 255 for even-band RX, 0 when off; a steady high stands in for 255/256 here. */
+/* Stock 0x8008710. Band parity is what matters: even (below 300 MHz, airband included) uses one
+   front end, odd (300 MHz and up) the other. On HWVER02 stock drives PB1 as TMR3 CH4 PWM (period
+   256) and sets it to 255 for even-band RX, 0 when off; a steady high stands in for 255/256 here.
+   TX: HWVER02 switches UHF with the BK4819's GPIO2 and VHF with PC15; other boards use PB0 / PC15.
+   tx.c never transmits in the airband (stock band 4, which has no TX path at all). */
 void board_rf_path(uint32_t freq_10hz, int mode)
 {
     int uhf = freq_10hz >= 30000000U;
     uint32_t rx_even = hwver2 ? RF_PB0_PIN : RF_PB1_PIN;
 
-    if (mode != RF_RX) {
+    if (mode == RF_OFF) {
         bk4819_write(0x33, 0x0000);
         gpio_bit_reset(RF_PC_PORT, RF_PC14_PIN | RF_PC15_PIN);
         gpio_bit_reset(RF_PB_PORT, RF_PB0_PIN | RF_PB1_PIN);
+    } else if (mode == RF_TX) {
+        if (uhf) {
+            gpio_bit_reset(RF_PC_PORT, RF_PC15_PIN);
+            if (hwver2)
+                bk4819_gpio(0x04, 1);
+            else
+                gpio_bit_set(RF_PB_PORT, RF_PB0_PIN);
+        } else {
+            if (hwver2)
+                bk4819_gpio(0x04, 0);
+            else
+                gpio_bit_reset(RF_PB_PORT, RF_PB0_PIN);
+            gpio_bit_set(RF_PC_PORT, RF_PC15_PIN);
+        }
     } else if (uhf) {
         gpio_bit_reset(RF_PB_PORT, rx_even);
         gpio_bit_set(RF_PC_PORT, RF_PC14_PIN);

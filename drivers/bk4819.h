@@ -11,6 +11,8 @@ uint16_t bk4819_read(uint8_t reg);
 void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f);
                                                 /* stock receive start (no tone squelch) */
 void     bk4819_off(void);                      /* REG_30 = 0: receiver and transmitter off */
+void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36);   /* transmit on */
+void     bk4819_pa_off(void);
 void     bk4819_af(int type);                   /* audio output: mute, FM or AM */
 int      bk4819_rssi_dbm(void);
 void     bk4819_gpio(uint8_t mask, int on);     /* the BK4819's own GPIO pins (REG_33) */

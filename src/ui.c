@@ -22,6 +22,7 @@
 #include "watch.h"
 #include "settings.h"
 #include "voice.h"
+#include "tx.h"
 
 #define C_BG     RGB(8, 10, 18)
 #define C_PANEL  RGB(26, 32, 48)
@@ -48,6 +49,10 @@ static const char *const backlight_names[] = {"Always", "10 s", "30 s", "60 s"};
 
 static uint8_t screen, step = 4, backlight = 2, light_on = 1, locked, searching;
 static uint8_t sounds = 3;              /* 1: key beeps, 2: voice */
+static const uint16_t tot_s[] = {0, 30, 60, 120, 180, 300};     /* TX time-out; 0 = none */
+static const char *const tot_names[] = {"Off", "30 s", "60 s", "2 min", "3 min", "5 min"};
+static uint8_t tot = 4, tx_timed_out;
+static uint32_t next_tx_draw;
 static uint32_t next_battery_warn;
 static uint32_t last_key, toast_until, next_meter, next_status;
 static char toast[24];
@@ -89,6 +94,8 @@ static void show_toast(const char *s)
 /* key beeps (149, 151, 156) and spoken prompts / the power-on sound each have a setting */
 static void snd(int id)
 {
+    if (tx_active())
+        return;                         /* never a sound while transmitting */
     int keyish = id == SND_KEY || id == SND_CANCEL || id == SND_OPEN;
     if (sounds & (keyish ? 1 : 2))
         voice_play(id);
@@ -108,9 +115,14 @@ static void draw_status(void)
     lcd_fill(0, 0, LCD_W, 12, C_PANEL);
     int open = radio_open() && !searching;
     int bars = open ? (rssi_level() + 2) / 3 : 0;
-    for (int i = 0; i < 5; i++) {
-        int h = 2 + i * 2;
-        lcd_fill(3 + i * 3, 11 - h, 2, h, i < bars ? C_GREEN : C_PANEL2);
+    if (tx_active()) {
+        gfx_rrect(2, 1, 16, 10, C_RED);
+        gfx_text(4, 2, &font_5x8, "TX", C_TEXT, C_RED);
+    } else {
+        for (int i = 0; i < 5; i++) {
+            int h = 2 + i * 2;
+            lcd_fill(3 + i * 3, 11 - h, 2, h, i < bars ? C_GREEN : C_PANEL2);
+        }
     }
     int x = 22;
     if (watch_dual())
@@ -136,8 +148,10 @@ static void draw_status(void)
 static void draw_meter(int i, int level)
 {
     int y = SLOT_Y(i) + 39;
+    int tx = tx_active() && i == watch_selected();
     for (int k = 0; k < 16; k++)
-        lcd_fill(6 + k * 7, y, 6, 4, k < level ? (k < 9 ? C_GREEN : k < 13 ? C_AMBER : C_RED) : C_PANEL2);
+        lcd_fill(6 + k * 7, y, 6, 4, k >= level ? C_PANEL2 : tx ? C_RED :
+                 k < 9 ? C_GREEN : k < 13 ? C_AMBER : C_RED);
     shown_level[i] = (int8_t)level;
 }
 
@@ -206,8 +220,11 @@ static void draw_slot(int i)
         put_str(chip, i ? "VFO B" : "VFO A");
         name = "";
     }
-    uint16_t chip_bg = rx ? C_GREEN : sel ? C_CYAN : C_PANEL2;
-    uint16_t chip_fg = rx || sel ? C_BG : C_TEXT;
+    int tx = sel && tx_active();
+    if (tx)
+        put_str(chip, "TX");
+    uint16_t chip_bg = tx ? C_RED : rx ? C_GREEN : sel ? C_CYAN : C_PANEL2;
+    uint16_t chip_fg = tx ? C_TEXT : rx || sel ? C_BG : C_TEXT;
     int cw = gfx_text_width(&font_6x10, chip) + 4;
     gfx_rrect(5, y + 3, cw, 12, chip_bg);
     gfx_text(7, y + 4, &font_6x10, chip, chip_fg, chip_bg);
@@ -234,7 +251,7 @@ static void draw_slot(int i)
         gfx_aa_text(x + 1, y + 17, &font_digits12, small, c, bg);
         gfx_text(x + 2, y + 28, &font_5x8, "MHz", C_DIM, bg);
     }
-    draw_meter(i, rx ? rssi_level() : 0);
+    draw_meter(i, tx ? (s->low_power ? 6 : 16) : rx ? rssi_level() : 0);
 }
 
 static void draw_hint(void)
@@ -244,6 +261,21 @@ static void draw_hint(void)
     lcd_fill(0, HINT_Y, LCD_W, LCD_H - HINT_Y, C_BG);
     if ((int32_t)(toast_until - millis()) > 0) {
         gfx_text(4, HINT_Y + 1, &font_6x10, toast, C_AMBER, C_BG);
+        return;
+    }
+    if (tx_timed_out) {
+        gfx_text(4, HINT_Y + 1, &font_5x8, "TX time-out: let go PTT", C_RED, C_BG);
+        return;
+    }
+    if (tx_active()) {
+        uint32_t sec = tx_seconds();
+        char *p = put_str(s, "TX ");
+        p = put_dec(p, sec / 60);
+        *p++ = ':';
+        *p++ = (char)('0' + sec % 60 / 10);
+        *p++ = (char)('0' + sec % 10);
+        put_str(put_str(p, "   time-out "), tot_names[tot]);
+        gfx_text(4, HINT_Y + 1, &font_5x8, s, C_RED, C_BG);
         return;
     }
     if (entry_len)
@@ -272,11 +304,11 @@ static void draw_main(void)
 
 /* ---- menu ---------------------------------------------------------------------------------- */
 
-enum { M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_KEYBEEP, M_VOICE,
+enum { M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, M_BACKLIGHT, M_TOT, M_KEYBEEP, M_VOICE,
        M_SCAN, M_ABOUT, M_COUNT };
 static const char *const menu_names[M_COUNT] = {
-    "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "Key beep", "Voice",
-    "Scan channels", "About",
+    "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch", "Backlight", "TX timeout",
+    "Key beep", "Voice", "Scan channels", "About",
 };
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
 static uint8_t menu_pos, menu_top, editing;
@@ -292,6 +324,7 @@ static void menu_value(int item, char *s)
     case M_MODULATION: put_str(s, sl->is_channel ? "channel" : sl->vfo_am ? "AM" : "FM"); break;
     case M_DUAL:       put_str(s, watch_dual() ? "On" : "Off"); break;
     case M_BACKLIGHT:  put_str(s, backlight_names[backlight]); break;
+    case M_TOT:        put_str(s, tot_names[tot]); break;
     case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
     case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
     default: break;
@@ -338,7 +371,7 @@ static void draw_about(void)
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "About", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.93", C_TEXT, C_BG);
+    gfx_text(4, 20, &font_6x10, "A36SE CFW v0.94", C_TEXT, C_BG);
     gfx_text(4, 34, &font_5x8, "MCU   AT32F421", C_DIM, C_BG);
     gfx_text(4, 46, &font_5x8, board_hwver2() ? "Board HWVER02" : "Board HW other", C_DIM, C_BG);
     p = put_str(s, "Batt  ");
@@ -531,10 +564,50 @@ static int digit_of(int key)
     }
 }
 
+static void ptt_down(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    entry_len = 0;
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    tx_timed_out = 0;
+    if (!tx_start(s->freq, s->narrow, s->low_power)) {
+        watch_pause(0);
+        show_toast(tx_allowed(s->freq) ? "TX failed" : "TX not allowed here");
+        draw_main();
+        return;
+    }
+    debug_puts("TX on\r\n");
+    next_tx_draw = millis() + 1000;
+    draw_main();
+}
+
+static void ptt_up(void)
+{
+    if (tx_active()) {
+        tx_stop();
+        debug_puts("TX off\r\n");
+    }
+    tx_timed_out = 0;
+    watch_pause(0);
+    draw_main();
+}
+
 static void key_main(const key_event_t *ev)
 {
     int sel = watch_selected();
     int busy = searching || scan_mode() != SCAN_OFF;
+
+    if (ev->key == KEY_PTT) {
+        if (ev->type == KEV_PRESS)
+            ptt_down();
+        else if (ev->type == KEV_RELEASE)
+            ptt_up();
+        return;
+    }
+    if (tx_active() || tx_timed_out)
+        return;                             /* other keys wait until PTT is released */
 
     if (ev->key == KEY_SIDE1) {             /* monitor while held */
         if (ev->type == KEV_PRESS || ev->type == KEV_RELEASE) {
@@ -637,10 +710,6 @@ static void key_main(const key_event_t *ev)
             start_scan();
         draw_main();
         break;
-    case KEY_PTT:
-        show_toast("TX not built yet");
-        draw_hint();
-        break;
     default:
         break;
     }
@@ -673,6 +742,9 @@ static void menu_change(int dir)
         break;
     case M_BACKLIGHT:
         backlight = (uint8_t)((backlight + 4 + dir) % 4);
+        break;
+    case M_TOT:
+        tot = (uint8_t)((tot + 6 + dir) % 6);
         break;
     case M_KEYBEEP:
         sounds ^= 1;
@@ -753,7 +825,7 @@ typedef struct __attribute__((packed)) {
         uint16_t channel;
         uint32_t vfo;
     } slot[2];
-    uint8_t selected, dual, squelch, step, backlight, sounds;
+    uint8_t selected, dual, squelch, step, backlight, sounds, tot;
 } saved_t;
 
 static saved_t saved;                   /* what flash holds now */
@@ -775,6 +847,7 @@ static void gather(saved_t *v)
     v->step = step;
     v->backlight = backlight;
     v->sounds = sounds;
+    v->tot = tot;
 }
 
 static void apply(const saved_t *v)
@@ -800,6 +873,8 @@ static void apply(const saved_t *v)
     if (v->backlight < 4)
         backlight = v->backlight;
     sounds = v->sounds & 3;
+    if (v->tot < 6)
+        tot = v->tot;
     watch_set_dual(v->dual != 0);
     watch_select(v->selected & 1);
 }
@@ -828,6 +903,7 @@ void ui_init(void)
     if (radio_squelch() == 0)
         radio_set_squelch(1);           /* 0 is always open, which leaves dual watch on slot A */
     watch_init();
+    gather(&v);                         /* defaults for anything an older record lacks */
     if (settings_load(&v, sizeof v)) {
         apply(&v);
         debug_puts("settings loaded\r\n");
@@ -852,6 +928,15 @@ void ui_key(const key_event_t *ev)
         debug_puts("\r\n");
     }
     last_key = millis();
+    if (ev->key == KEY_PTT) {               /* PTT always works: any screen, keys locked, display off */
+        apply_backlight(1);
+        if (screen != SCR_MAIN) {
+            screen = SCR_MAIN;
+            editing = 0;
+        }
+        key_main(ev);
+        return;
+    }
     if (!light_on) {                        /* the first key only wakes the display */
         apply_backlight(1);
         if (ev->type == KEV_PRESS)
@@ -882,7 +967,18 @@ void ui_tick(void)
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
 
-    if (voice_busy()) {
+    if (tx_active()) {
+        if (tot_s[tot] && tx_seconds() >= tot_s[tot]) {
+            tx_stop();
+            tx_timed_out = 1;           /* until PTT is released */
+            debug_puts("TX time-out\r\n");
+            draw_main();
+        } else if (screen == SCR_MAIN && (int32_t)(now - next_tx_draw) >= 0) {
+            next_tx_draw = now + 1000;
+            draw_hint();
+        }
+        last_key = now;                 /* keeps the backlight on */
+    } else if (voice_busy()) {
         /* no retuning while a sound plays: each retune switches the BK4819's audio stage, which the
            speaker (on for the sound) turns into a pop; stock stops the receiver for its prompts */
     } else if (searching) {
@@ -917,7 +1013,7 @@ void ui_tick(void)
     if (ev == WATCH_EV_OPEN)
         apply_backlight(1), last_key = now;
 
-    if (screen == SCR_MAIN && (int32_t)(now - next_meter) >= 0) {
+    if (screen == SCR_MAIN && !tx_active() && (int32_t)(now - next_meter) >= 0) {
         next_meter = now + 200;
         int i = watch_rx_slot(), level = radio_open() && !searching ? rssi_level() : 0;
         if (scan_mode() != SCAN_OFF)

@@ -124,6 +124,28 @@ void bk4819_off(void)
     bk4819_write(0x30, 0x0000);
 }
 
+/* Stock transmit start (0x8009b70, channel without tones), with the PA power (REG_36) written last:
+   the caller has already switched the RF path to transmit. */
+void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36)
+{
+    bk4819_write(0x37, 0x1D0F);
+    bk4819_write(0x30, 0x0000);
+    bk4819_write(0x38, (uint16_t)freq_10hz);
+    bk4819_write(0x39, (uint16_t)(freq_10hz >> 16));
+    bk4819_write(0x43, narrow ? 0x4048 : 0x3028);
+    bk4819_write(0x51, 0x0000);                  /* no CTCSS / DCS */
+    bk4819_write(0x52, 0x0000);
+    bk4819_write(0x7D, (uint16_t)((bk4819_read(0x7D) & 0xFFE0) | 0x1A));   /* mic gain, as stock */
+    bk4819_write(0x30, 0x0200);
+    bk4819_write(0x30, 0xC1FE);                  /* TX: PLL, PA gain, mic ADC, TX DSP */
+    bk4819_write(0x36, reg36);                   /* PA bias << 8 | gain */
+}
+
+void bk4819_pa_off(void)
+{
+    bk4819_write(0x36, 0x007F);                  /* stock 0x80088ca: bias 0 */
+}
+
 void bk4819_af(int type)
 {
     static const uint16_t reg47[] = {0x6040, 0x6140, 0x6740};   /* mute, FM, AM */

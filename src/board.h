@@ -84,7 +84,7 @@
 #define CPU_HZ          48000000U
 
 /* src/board.c */
-enum { RF_OFF, RF_RX };
+enum { RF_OFF, RF_RX, RF_TX };
 void board_init(void);
 int  board_hwver2(void);                    /* bootloader tag "HWVER02" at 0x08000300 */
 void board_rf_path(uint32_t freq_10hz, int mode);

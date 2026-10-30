@@ -38,9 +38,11 @@ int settings_load(void *dst, uint32_t len)
         spiflash_read(BASE + i * REC, r, REC);
         if (erased(r))
             break;
-        if ((r[0] | r[1] << 8) == MAGIC && r[2] == len && crc16(r, REC - 2) == (r[30] | r[31] << 8)) {
-            memcpy(dst, r + 4, len);
-            found = 1;
+        /* a record from an older firmware is shorter: it fills the start, the rest keeps defaults */
+        if ((r[0] | r[1] << 8) == MAGIC && r[2] && r[2] <= len &&
+            crc16(r, REC - 2) == (r[30] | r[31] << 8)) {
+            memcpy(dst, r + 4, r[2]);
+            found = r[2];
         }
     }
     return found;

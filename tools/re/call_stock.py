@@ -43,6 +43,7 @@ def main():
     ap.add_argument("--bkreg", action="append", default=[])
     ap.add_argument("--max", type=int, default=2_000_000)
     ap.add_argument("--flash")
+    ap.add_argument("--dump", action="append", default=[], help="ADDR:LEN of memory to print at the end")
     a = ap.parse_args()
 
     fw = open(a.image, "rb").read()
@@ -142,6 +143,11 @@ def main():
         uc.emu_start(int(a.func, 0) | 1, SENTINEL, count=a.max)
     except UcError as e:
         print(f"!! CPU error {e} at 0x{uc.reg_read(UC_ARM_REG_PC):08X}")
+    for item in a.dump:
+        addr, n = (int(v, 0) for v in item.split(":"))
+        data = bytes(uc.mem_read(addr, n))
+        for o in range(0, n, 16):
+            print(f"MEM 0x{addr + o:08X}: {data[o:o + 16].hex(' ')}")
     pc = uc.reg_read(UC_ARM_REG_PC)
     print(f"-- returned r0=0x{uc.reg_read(UC_ARM_REG_R0):X}" if pc == SENTINEL else f"-- stopped at 0x{pc:08X}")
 

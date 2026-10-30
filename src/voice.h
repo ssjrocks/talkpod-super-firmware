@@ -19,6 +19,7 @@ enum {
 
 int  voice_play(int id);        /* stops any sound playing; 0 if the pack has no such sound */
 int  voice_busy(void);
+void voice_stop(void);
 void voice_debug(uint32_t v[8]);    /* state, interrupts, rd, wr, left, C4DT, CTRL1|BRK<<8, CNT */
 void voice_poll(void);          /* main loop: refills the buffer from flash, finishes playback */
 

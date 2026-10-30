@@ -79,6 +79,8 @@ def main():
     ap.add_argument("--flash-out", help="save the flash image after the run (writes included)")
     ap.add_argument("--signal-at", action="append", default=[], type=int)
     ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
+    ap.add_argument("--hwver", default="02", help="board tag at 0x08000300 ('' for none)")
+    ap.add_argument("--pins", default="", help="log changes of these outputs with --bk, e.g. PC15,PB0,PA13")
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
@@ -95,6 +97,8 @@ def main():
                        (0x48000000, 0x2000), (0xE0000000, 0x100000), (0x1FFFF000, 0x1000)):
         uc.mem_map(base, size)
     uc.mem_write(0x08000400, image)
+    if args.hwver:
+        uc.mem_write(0x08000300, b"HWVER" + args.hwver.encode())    # the bootloader's board tag
 
     st = {"n": 0, "ms": 0, "octl": {GPIOA: 0, GPIOB: 0}, "cmd": None, "params": [], "win": [0, 0, 0, 0],
           "cx": 0, "cy": 0, "hi": None, "bk": None}
@@ -107,6 +111,8 @@ def main():
         bk_sched.append((int(when), int(reg, 0), int(val, 0)))
     bk_sched.sort()
     bklog = []
+    ports = {"A": GPIOA, "B": GPIOB, "C": GPIOC, "F": GPIOF}
+    watched = [(name, ports[name[1]], int(name[2:])) for name in args.pins.split(",") if name]
     flash = bytearray(open(args.flash, "rb").read()) if args.flash else bytearray()
     fl = {"cmd": [], "out": b"", "rx": 0, "log": []}
     gram = [0] * (162 * 162)
@@ -272,7 +278,21 @@ def main():
             fl["wel"] = False
         fl["cmd"] = []
 
+    def pin_changes(before):
+        for name, port, pin in watched:
+            was, now = (before[port] >> pin) & 1, (st["octl"][port] >> pin) & 1
+            if was != now:
+                bklog.append((st["ms"], "P", name, now))
+
     def on_write(uc, access, addr, size, value, _):
+        if watched and addr & ~0x3FF in st["octl"]:
+            before = dict(st["octl"])
+            on_write_port(uc, access, addr, size, value, _)
+            pin_changes(before)
+        else:
+            on_write_port(uc, access, addr, size, value, _)
+
+    def on_write_port(uc, access, addr, size, value, _):
         if addr == SPI0 + 0x0C:
             fl["rx"] = flash_byte(value & 0xFF)
         elif addr == USART0 + 0x04:
@@ -314,7 +334,10 @@ def main():
         log.append((st["ms"], serial.decode("latin-1")))
     if args.bk:
         for ms, kind, reg, val in bklog:
-            print(f"{ms:6d} ms  BK {kind} 0x{reg:02X} {'=' if kind == 'W' else '->'} 0x{val:04X}")
+            if kind == "P":
+                print(f"{ms:6d} ms  pin {reg} = {val}")
+            else:
+                print(f"{ms:6d} ms  BK {kind} 0x{reg:02X} {'=' if kind == 'W' else '->'} 0x{val:04X}")
     for ms, line in log:
         print(f"{ms:6d} ms  {line}")
     print(f"BK4819: {sum(1 for x in bklog if x[1] == 'W')} writes, {sum(1 for x in bklog if x[1] == 'R')} reads")

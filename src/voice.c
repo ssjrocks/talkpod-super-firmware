@@ -212,6 +212,12 @@ void voice_debug(uint32_t v[8])
     v[7] = *(volatile uint32_t *)0x40012C24U;   /* counter */
 }
 
+void voice_stop(void)
+{
+    if (state != IDLE)
+        stop();
+}
+
 int voice_busy(void)
 {
     return state != IDLE;
