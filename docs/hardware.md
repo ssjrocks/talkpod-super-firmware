@@ -243,7 +243,7 @@ This firmware writes **only 0x110000–0x1EFFFF**; `drivers/spiflash.c` refuses 
 | Address | This firmware |
 |---|---|
 | 0x110000 | sound pack (`tools/soundpack.py`, replaces the stock prompts) |
-| 0x120000–0x1DFFFF | boot splash, 768 KB |
+| 0x120000–0x19CFFF | boot splash, 500 KB (0x19D000–0x1DFFFF free) |
 | 0x1E0000 / 0x1E1000 / 0x1E2000 | settings logs: main, APRS, pager (32-byte records) |
 
 **Channel record**, 32 bytes, the same as CHIRP's `mml_jc8810` driver:

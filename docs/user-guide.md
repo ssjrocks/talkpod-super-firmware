@@ -62,9 +62,28 @@ Hold PTT. You get:
 - a timer on the hint line, and the time-out ("TX timeout" in the menu, 3 min by default). At the
   time-out the transmitter stops until PTT is released.
 
-Transmit happens on the **selected** slot's frequency, bandwidth and power. A frequency in a
-blocked range (108–138 MHz, 406.0–406.1 MHz, or 660–840 MHz where the chip can't synthesise)
-shows "TX not allowed here" and nothing is transmitted.
+Transmit happens on the **selected** slot's channel as programmed:
+- its transmit frequency (a repeater shift or split);
+- its CTCSS / DCS tone, scrambler, bandwidth and power;
+- a VFO slot transmits on its own frequency.
+
+PTT is refused, with a message, in these cases:
+- "TX off on this channel": the channel is set to transmit-off;
+- "Channel busy": the channel has busy lockout and a signal is being received;
+- "TX not allowed here": a blocked range (108–138 MHz, 406.0–406.1 MHz, or 660–840 MHz where the chip
+  can't synthesise).
+
+The marks on a slot show its set-up:
+- `+` / `−`: repeater shift;
+- `X`: transmit-off;
+- `N` / `W` / `AM`: bandwidth;
+- `H` / `L`: power;
+- `T` or `D`: a CTCSS or DCS tone.
+
+While transmitting, the slot shows the transmit frequency.
+
+**Tone squelch:** a channel with a receive tone stays silent until that tone is heard. Scan and dual
+watch stop on any carrier, but move on after half a second if it doesn't carry the channel's tone.
 
 ## Menu
 

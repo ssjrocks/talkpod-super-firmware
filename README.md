@@ -43,6 +43,10 @@ Version **1.0**. Builds to about 43 KB of the MCU's 63 KB application flash.
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working (VFO scan is in the code but not offered) |
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working (into a dummy load) |
+| Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
+| Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
+| CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | emulator-tested; on-air test pending |
+| Voice scrambler (BK4819 inversion, 2 types) | built, not tested |
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | emulator-tested; on-air test pending |
 | APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
@@ -50,12 +54,12 @@ Version **1.0**. Builds to about 43 KB of the MCU's 63 KB application flash.
 | Settings kept across power-off | working |
 | Ten short sounds (key beep, menu, high / low, power-on, low voltage...) | working (built from the radio's own voice prompts) |
 
-The firmware does **not** have:
-- CTCSS / DCS;
+The firmware does **not** have yet:
+- the per-channel encryption ("ENCRY") and PTT-ID / DTMF signalling;
+- the stock menu settings (VOX, roger beep, tail elimination, tone burst, alarm, side-key functions and so
+  on); it keeps its own settings, set from its menu;
 - the stock FM broadcast receiver (BK1080);
-- VOX, DTMF or the alarm;
-- channel editing on the radio. Channels are read from the radio's flash in the stock / CHIRP
-  layout, so program them with stock firmware and CHIRP or Talkpod Manager first.
+- channel editing on the radio (program channels with Talkpod Manager or CHIRP).
 
 ## Quick start
 

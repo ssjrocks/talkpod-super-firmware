@@ -19,12 +19,25 @@ recognised anywhere in the stream.
 | PC sends | Radio answers |
 |---|---|
 | `PROGRAMJC37U` | 0x06 (log output is muted until `E` or 1 s of silence) |
-| `F` | 8-byte identification: **`A36CFW01`** for this firmware (stock sends its own fingerprint) |
+| `F` | 8-byte identification: **`A36CFW02`** for this firmware 1.1+ (`A36CFW01` was 1.0; stock sends its own fingerprint) |
+| `R` addr(2, big-endian) len(1) | `R` addr len, then len bytes from flash at addr |
+| `W` addr(2, big-endian) len(1), then len bytes | 0x06 (0x15 if the range is outside the window) |
 | `E` | leaves program mode |
 | `UPDATE` | 0x06, then a reset into the bootloader, ready for an INTO_BOOT frame |
 
-Reading and writing channels is not implemented: program channels with stock firmware and CHIRP
-or Talkpod Manager. This firmware reads them in the stock layout.
+`R` and `W` (1.1 and later) address the external flash directly, from 0 to 0xB43F, as stock does:
+- channels at 0x0000 (512 × 32 bytes);
+- VFO data at 0x8000;
+- settings at 0x9000;
+- DTMF at 0xA000;
+- ANI codes and custom names at 0xB000.
+
+That is the memory map of CHIRP's `mml_jc8810` driver, so CHIRP's A36plus driver reads and writes
+this firmware unchanged once it accepts the ident. Talkpod Manager does this, and its images move
+between stock and Super Firmware.
+
+Writes collect in a 4 KB sector buffer. A sector is erased and programmed only if its data changed,
+once, when a write moves to another sector, on `E`, or after 1 s of silence.
 
 ## Flashing
 
@@ -60,7 +73,7 @@ or Talkpod Manager. This firmware reads them in the stock layout.
 
 | Command | Reply |
 |---|---|
-| `i` | `fw=TSF ver=1.00 board=HWVER02 splash=00120000+000C0000 splash_fmt=A36G`: identifies this firmware and where the splash goes (address + size, hex) |
+| `i` | `fw=TSF ver=1.10 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H`: identifies this firmware, where the splash goes (address + size, hex) and which splash headers it reads |
 | `G` | plays the boot splash now, then `ok`, or `no splash`. The screen returns to what it showed |
 | `E ADDR` | erases the 4 KB sector at ADDR (hex): `ok`, or `refused` outside 0x110000–0x1EFFFF |
 | `W ADDR LEN` | then LEN raw bytes (1–256) and their CRC-16/XMODEM, big-endian. Programs them at ADDR (hex) into erased flash: `ok`, `crc`, `refused` or `timeout` (bytes not all there within 2 s). Wait ~50 ms after the command line before sending the bytes |
@@ -85,7 +98,8 @@ data cannot be changed from the shell.
 
 ## Boot splash
 
-The splash is an animation stored in the external flash at **0x120000–0x1DFFFF (768 KB)**. It is
+The splash is an animation stored in the external flash at **0x120000–0x19CFFF (500 KB)**; firmware 1.0
+allowed 768 KB. It is
 played once at power-on, and any key skips it. Changing it needs nothing but the shell above, so
 **Talkpod Manager can upload GIFs** with the steps below. `tools/splash.py` is the reference
 implementation; it is self-contained (Pillow and pyserial only) and can be imported or copied:
@@ -94,13 +108,13 @@ implementation; it is self-contained (Pillow and pyserial only) and can be impor
 import splash                                   # tools/splash.py
 blob, info = splash.convert("logo.gif")         # A36G bytes; info: frames, ms, bytes, capacity
 with splash.Radio("/dev/ttyUSB0") as r:
-    r.info()                                    # {'fw': 'TSF', 'ver': '1.00', 'splash': '00120000+000C0000', ...}
+    r.info()                                    # {'fw': 'TSF', 'ver': '1.10', 'splash': '00120000+0007D000', ...}
     r.upload(blob, progress=lambda done, total: ...)
     r.play()                                    # preview
     # r.remove()                                # no splash at all
 ```
 
-### Format (A36G)
+### Format (A36G / A36H)
 
 Little-endian throughout.
 
@@ -108,8 +122,15 @@ Little-endian throughout.
 offset 0   "A36G"                 magic
        4   u16 frames
        6   u16 background         RGB565, drawn behind the first frame
-       8   u32 total bytes        header included; at most 0xC0000
+       8   u32 total bytes        header included; at most 0x7D000
       12   frames...
+
+or, firmware 1.1 and later:
+offset 0   "A36H"                 magic
+       4   u16 frames, u16 background, u32 total bytes   as A36G
+      12   u8  plays              the frames are played this many times (stored once)
+      13   3 reserved bytes
+      16   frames...
 
 frame:     u16 delay_ms           how long this frame stays before the next one is drawn
            u8  x, y, w, h         the rectangle this frame redraws (w = 0: nothing changes)
@@ -139,7 +160,7 @@ Frame delays come from the GIF (20 ms at least). Conversion stops at 15 s of ani
 ### Uploading
 
 1. **Check the firmware:** send `i`. A line starting `fw=TSF` means this firmware and gives the
-   splash area. With older or stock firmware, there's no answer. Program-mode ident `A36CFW01` also
+   splash area. With older or stock firmware, there's no answer. Program-mode ident `A36CFW0x` also
    identifies it. The radio must be switched on and not in program mode.
 2. **Erase** every 4 KB sector the splash will cover: `E 120000`, `E 121000`, ... Each answers `ok`.
 3. **Write** the bytes 256 at a time: `W 120000 256`, ~50 ms pause, 256 bytes, 2 CRC bytes; expect
