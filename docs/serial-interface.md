@@ -184,7 +184,7 @@ screen).
 **Settings** stock also has (squelch, backlight, side keys, Roger...) are in stock's own record, above.
 The rest, this firmware's own (`src/settings.c`), are logs of 32-byte records, one 4 KB sector per area, in the
 program-mode window from 1.13 so that Read / Write carry them: 0x4000 main, 0x5000 APRS, 0x6000 pager,
-0x7000 scramble key. (1.0–1.12 kept them at 0x1E0000–0x1E3FFF; 1.13 reads those once, while the
+0x7000 scramble key and the frequency scanner's range. (1.0–1.12 kept them at 0x1E0000–0x1E3FFF; 1.13 reads those once, while the
 window has none, and copies them in.) After the PC writes, the radio loads them again.
 Talkpod Manager's `tsf_settings.py` reads and writes them; the payloads are the structs `saved_t`
 (`src/ui.c`), `aprs_cfg_t`, `pager_cfg_t` and `roll_cfg_t`.

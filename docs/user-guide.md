@@ -18,7 +18,7 @@
 
 Each slot is a **channel** (from the radio's channel memory) or a **VFO frequency**. The marks at
 the right are the bandwidth (W wide, N narrow, AM) and the TX power (H high, L low). A channel
-brings its own bandwidth and power; channels in 108–137 MHz receive AM. With **dual watch** on,
+brings its own bandwidth and power; channels in 108–137 MHz and on 27 MHz CB receive AM. With **dual watch** on,
 the receiver alternates between the two slots (about 110 ms each). It stays on a slot while it
 hears a signal and 1 s after.
 
@@ -48,6 +48,14 @@ VFO tunes 18–1300 MHz, but the BK4819 does not receive or transmit in 660–84
 
 **Search** (long 4) runs the BK4819's frequency counter. It finds the strongest carrier nearby and
 puts it in the VFO.
+
+**Frequency scanner** (first item in the menu): type **From** and **To** in MHz, the same way as a
+VFO frequency (MENU moves on), choose the **Step** with UP / DOWN, and MENU starts it. It remembers
+the range. It runs on the main screen, shows `SCAN`, and stops on a signal; **Scan resume** in the menu
+says when it moves on (by default 2 s after the signal ends). UP / DOWN skip, 0 locks a frequency out
+for this scan. BACK stops it and leaves the slot in VFO mode on that frequency. Airband (108–137 MHz)
+and 27 MHz CB (26.96–27.41 MHz) are received in AM automatically, and it jumps over 660–840 MHz, which
+the chip can't tune.
 
 **Channel scan** (long 6 or side key 2) steps through the channels marked for scanning. It stops on
 a signal and moves on 2 s after it ends. During a scan, 0 locks the current channel out for this
@@ -120,6 +128,7 @@ yet and say so.
 
 | Item | Values |
 |---|---|
+| Freq scanner | scans a frequency range: see above |
 | Messages | opens the Messages screen (shows how many are new) |
 | APRS | opens the APRS screen |
 | Pager | opens the Pager screen |

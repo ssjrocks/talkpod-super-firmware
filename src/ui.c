@@ -47,7 +47,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
@@ -206,7 +206,9 @@ static void draw_slot(int i)
     slot_t *s = watch_slot(i);
     int y = SLOT_Y(i), sel = i == watch_selected();
     int rx = radio_open() && !searching && watch_rx_slot() == i && scan_mode() == SCAN_OFF;
-    int scanning = sel && scan_mode() == SCAN_CH;
+    int scanning = sel && scan_mode() == SCAN_CH, fscan = sel && scan_mode() == SCAN_VFO;
+    if (fscan && scan_holding())
+        rx = 1;
     uint16_t bg = sel ? C_PANEL : C_BG;
     char chip[8], big[8], small[4];
 
@@ -224,6 +226,10 @@ static void draw_slot(int i)
         put_dec(put_str(chip, "CH "), (uint32_t)scan_channel());
         name = ch.name;
         f = ch.rx;
+    } else if (fscan) {
+        put_str(chip, "SCAN");
+        name = "";
+        f = radio_freq();
     } else if (s->is_channel) {
         put_dec(put_str(chip, "CH "), s->channel);
     } else {
@@ -231,7 +237,7 @@ static void draw_slot(int i)
         name = "";
     }
     int tx = sel && tx_active();
-    int shows = s->is_channel && !tx ? (i ? stock.mdfb : stock.mdfa) : 1;   /* 0 name, 1 frequency, 2 number */
+    int shows = s->is_channel && !tx && !fscan ? (i ? stock.mdfb : stock.mdfa) : 1;   /* 0 name, 1 frequency, 2 number */
     const char *big_name = 0;
     char top[10];
     if (shows == 0 && name[0]) {            /* the name goes big, the frequency takes its place */
@@ -252,7 +258,8 @@ static void draw_slot(int i)
         mp = put_str(mp, "X ");                             /* transmit off */
     else if (s->tx != s->freq)
         mp = put_str(mp, s->tx > s->freq ? "+ " : "- ");    /* repeater shift / split */
-    mp = put_str(put_str(mp, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
+    mp = put_str(put_str(mp, (fscan ? channel_is_am(f) : s->am) ? "AM " : s->narrow ? "N " : "W "),
+                 s->low_power ? "L" : "H");
     if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
         mp = put_str(mp, s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
     if (s->scramble)
@@ -398,12 +405,12 @@ static const stock_item_t stock_items[] = {
 };
 #define STOCK_ITEMS 22
 
-enum { M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
+enum { M_FSCAN, M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
        M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
        M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
        M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS, M_COUNT };
 static const char *const menu_names[M_STOCK] = {
-    "Messages", "APRS", "Pager", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
+    "Freq scanner", "Messages", "APRS", "Pager", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
     "Backlight", "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon",
     "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
 };
@@ -907,6 +914,155 @@ static void open_edit(int kind)
     draw_edit();
 }
 
+/* ---- frequency scanner (menu): From, To, Step, then it runs on the main screen ---------------- */
+
+static uint8_t fs_field, fs_len;        /* 0 From, 1 To, 2 Step; digits typed in this field */
+static char fs_digits[8];
+
+static void stop_activity(void);
+
+static uint32_t fs_value(int field)
+{
+    return field ? roll_cfg.scan_hi : roll_cfg.scan_lo;
+}
+
+static void put_mhz(char *s, uint32_t f)
+{
+    uint32_t v = f / 10;                /* 100 Hz */
+    char *p = put_dec(s, v / 10000);
+    *p++ = '.';
+    for (uint32_t d = 1000; d; d /= 10)
+        *p++ = (char)('0' + v / d % 10);
+    *p = 0;
+}
+
+static void draw_fscan(void)
+{
+    static const char *const labels[3] = {"From", "To", "Step"};
+    char v[12];
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "Freq scanner", C_TEXT, C_PANEL);
+    lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
+    for (int i = 0; i < 3; i++) {
+        int y = 20 + i * 18, on = i == fs_field;
+        uint16_t bg = on ? C_PANEL2 : C_BG;
+        if (on)
+            gfx_rrect(2, y - 2, 124, 16, bg);
+        if (i == 2) {
+            put_str(v, step_names[roll_cfg.scan_step]);
+        } else if (on && fs_len) {
+            for (int k = 0, n = 0; k < 8; k++)
+                v[k] = k == 3 ? '.' : n < fs_len ? fs_digits[n++] : '-';
+            v[8] = 0;
+        } else {
+            put_mhz(v, fs_value(i));
+        }
+        gfx_text(6, y + 1, &font_6x10, labels[i], C_TEXT, bg);
+        gfx_text(122 - gfx_text_width(&font_7x13b, v), y, &font_7x13b, v, on ? C_AMBER : C_DIM, bg);
+    }
+    gfx_text(4, 80, &font_5x8, fs_field < 2 ? "Type MHz, 7 digits" : "UP / DOWN change", C_DIM, C_BG);
+    gfx_text(4, 90, &font_5x8, fs_field < 2 ? "MENU next" : "MENU start scanning", C_DIM, C_BG);
+    gfx_text(4, 100, &font_5x8, "BACK delete / leave", C_DIM, C_BG);
+    lcd_fill(0, LCD_H - 10, LCD_W, 10, C_BG);
+    if ((int32_t)(toast_until - millis()) > 0)
+        gfx_text(4, LCD_H - 9, &font_5x8, toast, C_AMBER, C_BG);
+}
+
+static void open_fscan(void)
+{
+    if (!roll_cfg.scan_lo) {
+        roll_cfg.scan_lo = 47600000;
+        roll_cfg.scan_hi = 47740000;
+        roll_cfg.scan_step = 4;
+    }
+    if (roll_cfg.scan_step >= STEP_COUNT)
+        roll_cfg.scan_step = 4;
+    fs_field = 0;
+    fs_len = 0;
+    screen = SCR_FSCAN;
+    draw_fscan();
+}
+
+/* what was typed goes in, as a frequency is typed on the main screen: MHz first */
+static int fs_commit(void)
+{
+    if (!fs_len)
+        return 1;
+    uint32_t v = 0;
+    for (int i = 0; i < 7; i++)
+        v = v * 10 + (uint32_t)(i < fs_len ? fs_digits[i] - '0' : 0);
+    v *= 10;
+    fs_len = 0;
+    if (v < 1800000 || v > 130000000) {
+        show_toast("18 to 1300 MHz");
+        return 0;
+    }
+    if (fs_field)
+        roll_cfg.scan_hi = v;
+    else
+        roll_cfg.scan_lo = v;
+    return 1;
+}
+
+static void fs_start(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    uint32_t lo = roll_cfg.scan_lo, hi = roll_cfg.scan_hi;
+    if (lo > hi) {
+        roll_cfg.scan_lo = hi;
+        roll_cfg.scan_hi = lo;
+    }
+    if (roll_cfg.scan_hi - roll_cfg.scan_lo < steps[roll_cfg.scan_step]) {
+        show_toast("range under one step");
+        draw_fscan();
+        return;
+    }
+    roll_save();
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    screen = SCR_MAIN;
+    scan_start_vfo(roll_cfg.scan_lo, roll_cfg.scan_hi, steps[roll_cfg.scan_step], s->vfo_narrow);
+    draw_main();
+}
+
+static void key_fscan(const key_event_t *ev)
+{
+    int d = digit_of(ev->key);
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    if (d >= 0 && fs_field < 2) {
+        fs_digits[fs_len++] = (char)('0' + d);
+        if (fs_len == 7 && fs_commit())
+            fs_field++;
+    } else if (ev->key == KEY_MENU) {
+        if (fs_field == 2) {
+            fs_start();
+            return;
+        }
+        if (fs_commit())
+            fs_field++;
+    } else if (ev->key == KEY_UP || ev->key == KEY_DOWN) {
+        int dir = ev->key == KEY_DOWN ? 1 : -1;
+        if (fs_field == 2) {
+            roll_cfg.scan_step = (uint8_t)((roll_cfg.scan_step + STEP_COUNT + dir) % STEP_COUNT);
+        } else if (fs_commit()) {
+            fs_field = (uint8_t)(fs_field ^ 1);
+        }
+    } else if (ev->key == KEY_BACK) {
+        if (fs_len) {
+            fs_len--;
+        } else if (fs_field) {
+            fs_field--;
+        } else {
+            screen = SCR_MENU;
+            draw_menu();
+            return;
+        }
+    }
+    draw_fscan();
+}
+
 static void redraw(void)
 {
     if (screen == SCR_MAIN)
@@ -921,6 +1077,8 @@ static void redraw(void)
         draw_edit();
     else if (screen == SCR_PAGER)
         draw_pager();
+    else if (screen == SCR_FSCAN)
+        draw_fscan();
     else
         draw_about();
 }
@@ -943,8 +1101,13 @@ static void stop_activity(void)
     }
     if (scan_mode() != SCAN_OFF) {
         slot_t *s = watch_slot(sel);
+        int fscan = scan_mode() == SCAN_VFO;
         scan_stop();
-        if (scan_channel()) {
+        if (fscan) {                        /* stays on this frequency, in VFO mode */
+            s->is_channel = 0;
+            s->vfo = radio_freq();
+            s->vfo_am = (uint8_t)channel_is_am(s->vfo);
+        } else if (scan_channel()) {
             s->is_channel = 1;
             s->channel = (uint16_t)scan_channel();
         }
@@ -1829,6 +1992,8 @@ static void key_menu(const key_event_t *ev)
             screen = SCR_MAIN;
             start_scan();
             draw_main();
+        } else if (menu_pos == M_FSCAN) {
+            open_fscan();
         } else if (menu_pos == M_MESSAGES) {
             open_messages();
         } else if (menu_pos == M_APRS) {
@@ -2084,6 +2249,8 @@ void ui_key(const key_event_t *ev)
         key_edit(ev);
     else if (screen == SCR_PAGER)
         key_pager(ev);
+    else if (screen == SCR_FSCAN)
+        key_fscan(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();

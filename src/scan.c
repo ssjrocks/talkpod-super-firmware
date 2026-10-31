@@ -16,7 +16,7 @@
 #define HANG_MS       2000      /* resume this long after the signal went away */
 #define HOLD_TO_MS    5000      /* scan resume TO: move on after this long, signal or not */
 
-static uint8_t mode, holding, am, narrow;
+static uint8_t mode, holding, narrow;
 static int8_t dir;
 static uint32_t lo, hi, step, tuned_at, closed_since, held_at;
 static uint8_t tone_wanted;
@@ -38,7 +38,15 @@ static int locked(uint32_t f)
 
 int channel_is_am(uint32_t f)
 {
-    return f >= 10800000 && f < 13700000;
+    return (f >= 10800000 && f < 13700000) || (f >= 2696000 && f <= 2741000);
+}
+
+static void tune_vfo(uint32_t f)
+{
+    tone_wanted = 0;
+    radio_set_tone(TONE_NONE, 0, 0);
+    radio_tune(f, channel_is_am(f), narrow);
+    tuned_at = millis();
 }
 
 static void retune(void)
@@ -47,6 +55,8 @@ static void retune(void)
         uint32_t f = radio_freq();
         for (int i = 0; i <= LOCKOUT_MAX; i++) {         /* past locked-out frequencies */
             f = dir > 0 ? f + step : f - step;
+            if (f > 66000000 && f < 84000000)            /* the BK4819 can't tune here */
+                f = dir > 0 ? 84000000 : 66000000;
             if (f > hi)
                 f = lo;
             if (f < lo)
@@ -54,9 +64,8 @@ static void retune(void)
             if (!locked(f))
                 break;
         }
-        tone_wanted = 0;
-        radio_set_tone(TONE_NONE, 0, 0);
-        radio_tune(f, am, narrow);
+        tune_vfo(f);
+        return;
     } else {
         channel_t ch;
         int n = channel;
@@ -103,19 +112,17 @@ int scan_lockouts(void)
     return nlock;
 }
 
-void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int d, int am_mode, int nb)
+void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int nb)
 {
     lo = from_lo;
     hi = to_hi;
     step = st;
-    dir = (int8_t)d;
-    am = (uint8_t)am_mode;
+    dir = 1;
     narrow = (uint8_t)nb;
     mode = SCAN_VFO;
     holding = 0;
     radio_set_monitor(0);
-    radio_tune(radio_freq() / step * step, am, narrow);    /* onto the step grid */
-    retune();
+    tune_vfo(lo);
 }
 
 void scan_start_ch(int from, int d)

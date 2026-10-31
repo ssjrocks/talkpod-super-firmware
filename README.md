@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.14**. Builds to about 53 KB of the MCU's 63 KB application flash.
+Version **1.15**. Builds to about 55 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -41,7 +41,8 @@ Version **1.14**. Builds to about 53 KB of the MCU's 63 KB application flash.
 | Squelch 0–9 from the radio's own calibration, widened for wide FM | working |
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
-| Channel scan with lock-out | working (VFO scan is in the code but not offered) |
+| Channel scan with lock-out | working |
+| Frequency scanner: a typed range and step, AM on airband and 27 MHz CB, stops into VFO mode | emulator-tested; on-air test pending |
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
