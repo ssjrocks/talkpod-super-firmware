@@ -8,6 +8,9 @@
 void     tx_init(void);                 /* reads the PA calibration from flash */
 int      tx_allowed(uint32_t freq_10hz);
 void     tx_end(void);                          /* PTT released: roger, squelch tail, then tx_stop() */
+void     tx_ptt_id(int group);                  /* the DTMF code group (0-14) of stock's PTT-ID */
+void     tx_ani(void);                          /* the radio's ANI code as DTMF */
+void     tx_dtmf_key(int digit);                /* while a key is held: a digit; -1 at the release */
 void     tx_tone_burst(int on);                 /* while transmitting: stock's tone burst */
 int      tx_start(uint32_t freq_10hz, int narrow, int low_power, int tone, uint16_t tone_value, int scramble);
                                         /* 0 if not allowed; tone BK_TONE_* (data modes: none) */

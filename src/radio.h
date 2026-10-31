@@ -16,7 +16,8 @@ int  radio_poll(void);                      /* every 20 ms; 1 when the audio ope
 int  radio_open(void);                      /* audio on: a signal with the right tone, or monitor */
 int  radio_busy(void);                      /* a signal is there, whatever its tone */
 int  radio_rssi_dbm(void);
-void radio_mute(void);                      /* audio off until the next radio_tune() */
+void radio_mute(void);
+void radio_sleep(void);                         /* receiver off until the next radio_retune() */                      /* audio off until the next radio_tune() */
 enum { HOLD_VOICE = 1, HOLD_DATA = 2, HOLD_TAIL = 4 };
 void radio_audio_hold(int who, int on);     /* keep received audio muted: a sound plays, data arrives */
 int  radio_narrow(void);

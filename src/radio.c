@@ -204,6 +204,12 @@ int radio_rssi_dbm(void)
     return bk4819_rssi_dbm();
 }
 
+void radio_sleep(void)                          /* stock 0x80085f8 */
+{
+    bk4819_off();
+    bk4819_write(0x37, 0x1D00);
+}
+
 void radio_mute(void)
 {
     muted = 1;

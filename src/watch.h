@@ -17,6 +17,7 @@ typedef struct {
     uint32_t tx;                /* 0: transmit off on this channel */
     tone_t rx_tone, tx_tone;
     uint8_t am, narrow, bcl, scramble;
+    uint8_t pttid, scode;           /* stock's PTT-ID: 1 at key-up, 2 at key-down; its DTMF code group */
     uint8_t reverse;                /* receive on the TX frequency and transmit on the RX one */
     char name[13];
 } slot_t;

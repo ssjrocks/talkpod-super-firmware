@@ -30,6 +30,8 @@ static void resolve(slot_t *s)
         s->tx_tone = ch.tx_tone;
         s->bcl = ch.bcl;
         s->scramble = ch.scramble;
+        s->pttid = ch.pttid;
+        s->scode = ch.scode;
         s->am = (uint8_t)channel_is_am(ch.rx);
         s->narrow = ch.narrow;
         for (int i = 0; i < 13; i++)
@@ -38,7 +40,7 @@ static void resolve(slot_t *s)
         s->is_channel = 0;
         s->freq = s->tx = s->vfo;
         s->rx_tone.type = s->tx_tone.type = TONE_NONE;
-        s->bcl = s->scramble = 0;
+        s->bcl = s->scramble = s->pttid = 0;
         s->am = s->vfo_am;
         s->narrow = s->vfo_narrow;
         s->name[0] = 0;

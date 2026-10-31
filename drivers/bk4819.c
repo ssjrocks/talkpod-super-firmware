@@ -435,6 +435,23 @@ void bk4819_tone_tx(int on)
     }
 }
 
+/* While bk4819_tone_tx() is on: a DTMF digit (0-9, 10-13 A-D, 14 *, 15 #), or -1 for silence. Stock's
+   table at 0x800E78A and gains (REG_70 0xC5C5). */
+void bk4819_dtmf(int digit)
+{
+    static const uint16_t low[4] = {0x1C1C, 0x1F0E, 0x225C, 0x25F3};   /* 697 770 852 941 Hz */
+    static const uint16_t high[4] = {0x30C2, 0x35E1, 0x3B91, 0x41DC};  /* 1209 1336 1477 1633 */
+    static const uint8_t pair[16] = {0x31, 0x00, 0x01, 0x02, 0x10, 0x11, 0x12, 0x20, 0x21, 0x22,
+                                     0x03, 0x13, 0x23, 0x33, 0x30, 0x32};
+    if (digit < 0) {
+        bk4819_write(0x70, 0x0000);
+        return;
+    }
+    bk4819_write(0x71, low[pair[digit & 15] >> 4]);
+    bk4819_write(0x72, high[pair[digit & 15] & 15]);
+    bk4819_write(0x70, 0xC5C5);
+}
+
 /* The squelch tail, while still transmitting (stock 0x8008848(1)): 55 Hz, or on a DCS channel the
    turn-off code, for a moment before the carrier goes; a receiver then mutes before its squelch
    closes on noise. phase: stock's TAIL PHASE, 0 none. */

@@ -107,6 +107,45 @@ void tx_end(void)
     tx_stop();
 }
 
+/* DTMF digits from flash, ending at the first value above 15, at stock's speed list (selected at
+   0xA007 on, 0xA008 off) */
+static void send_digits(uint32_t addr, int n)
+{
+    static const uint16_t speed[5] = {50, 100, 200, 300, 500};
+    uint8_t code[5], t[2];
+    spiflash_read(addr, code, (uint32_t)n);
+    spiflash_read(0xA007, t, sizeof t);
+    if (!active || code[0] > 15)
+        return;
+    bk4819_tone_tx(1);
+    for (int i = 0; i < n && code[i] <= 15; i++) {
+        bk4819_dtmf(code[i]);
+        delay_ms(speed[t[0] < 5 ? t[0] : 1]);
+        bk4819_dtmf(-1);
+        delay_ms(speed[t[1] < 5 ? t[1] : 1]);
+    }
+    bk4819_tone_tx(0);
+}
+
+void tx_ptt_id(int group)
+{
+    send_digits(0xA020 + (uint32_t)group * 16, 5);
+}
+
+void tx_ani(void)
+{
+    send_digits(0xB000 + (uint32_t)stock.ani * 3, 3);
+}
+
+void tx_dtmf_key(int digit)
+{
+    if (!active)
+        return;
+    bk4819_tone_tx(digit >= 0);
+    if (digit >= 0)
+        bk4819_dtmf(digit);
+}
+
 void tx_tone_burst(int on)
 {
     static const uint16_t hz[4] = {1000, 1450, 1750, 2100};

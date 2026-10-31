@@ -346,6 +346,12 @@ typedef struct {
 
 #define OFFS(field) ((uint8_t)offsetof(stock_t, field))
 static const char *const off_on[] = {"Off", "On"};
+static const char *const save_names[] = {"Off", "Normal", "Super", "Deep"};
+static const char *const vox_names[] = {"Off", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"};
+static const char *const voxd_names[] = {"0.5 s", "0.6 s", "0.7 s", "0.8 s", "0.9 s", "1.0 s", "1.1 s", "1.2 s",
+                                         "1.3 s", "1.4 s", "1.5 s", "1.6 s", "1.7 s", "1.8 s", "1.9 s", "2.0 s"};
+static const char *const pttlt_names[] = {"None", "100 ms", "200 ms", "400 ms", "600 ms", "800 ms", "1 s"};
+static const char *const alarm_names[] = {"Local", "Tone", "Code"};
 static const char *const screv_names[] = {"Time", "Carrier", "Stop"};
 static const char *const mdf_names[] = {"Name", "Frequency", "Channel"};
 static const char *const autolk_names[] = {"Off", "5 s", "10 s", "15 s"};
@@ -367,6 +373,12 @@ static const char *const fn_names[] = {"Off", "FM radio", "TX power", "Scan", "S
                                        "Monitor", "PTT B", "SOS", "DTMF", "Reverse", "Remote"};
 #define FN_ITEM(name, field) {name, OFFS(field), 13, fn_names, fn_vals}
 static const stock_item_t stock_items[] = {
+    {"Battery save", OFFS(save), 4, save_names, 0},
+    {"VOX", OFFS(vox), 11, vox_names, 0},
+    {"VOX delay", OFFS(voxd), 16, voxd_names, 0},
+    {"PTT-ID delay", OFFS(pttlt), 7, pttlt_names, 0},
+    {"Alarm", OFFS(almode), 3, alarm_names, 0},
+    {"Alarm sound", OFFS(alarmsound), 2, off_on, 0},
     {"Scan resume", OFFS(screv), 3, screv_names, 0},
     {"Slot A shows", OFFS(mdfa), 3, mdf_names, 0},
     {"Slot B shows", OFFS(mdfb), 3, mdf_names, 0},
@@ -384,7 +396,7 @@ static const stock_item_t stock_items[] = {
     FN_ITEM("Side 1", skey3_sp),
     FN_ITEM("Top key", topkey_sp),
 };
-#define STOCK_ITEMS 16
+#define STOCK_ITEMS 22
 
 enum { M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
        M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
@@ -1142,6 +1154,11 @@ static void ptt_down(void)
         draw_main();
         return;
     }
+    if (s->pttid & 1) {                     /* stock's PTT-ID at key-up, after its delay */
+        static const uint16_t lt_ms[7] = {0, 100, 200, 400, 600, 800, 1000};
+        delay_ms(lt_ms[stock.pttlt < 7 ? stock.pttlt : 0]);
+        tx_ptt_id(s->scode);
+    }
     debug_puts("TX on\r\n");
     next_tx_draw = millis() + 1000;
     draw_main();
@@ -1150,6 +1167,9 @@ static void ptt_down(void)
 static void ptt_up(void)
 {
     if (tx_active()) {
+        slot_t *s = watch_slot(watch_selected());
+        if (s->pttid & 2)
+            tx_ptt_id(s->scode);
         tx_end();
         debug_puts("TX off\r\n");
         if (stock.rpste || stock.rptrl) {       /* the repeater's tail isn't heard */
@@ -1188,6 +1208,13 @@ static void key_main(const key_event_t *ev)
         } else if (side_short(ev->key) == FN_PTT_B && ev->type == KEV_RELEASE) {
             ptt_up();
         }
+        return;
+    }
+    if (tx_active() && digit_of(ev->key) >= 0) {        /* DTMF while held */
+        if (ev->type == KEV_PRESS)
+            tx_dtmf_key(digit_of(ev->key));
+        else if (ev->type == KEV_RELEASE)
+            tx_dtmf_key(-1);
         return;
     }
     if (tx_active() || tx_timed_out)
@@ -1287,6 +1314,91 @@ static void key_main(const key_event_t *ev)
     }
 }
 
+/* Stock's alarm (SOS on a side key), until any key: Local on the speaker alone, Tone on the air too,
+   Code on the air as well with the ANI code as DTMF every few seconds. */
+static uint8_t alarm_on;
+static uint32_t alarm_next;
+static uint16_t alarm_hz;
+static uint8_t alarm_n;
+
+static void alarm_stop(void)
+{
+    if (!alarm_on)
+        return;
+    alarm_on = 0;
+    if (tx_active()) {
+        bk4819_tone_tx(0);
+        tx_stop();
+    }
+    bk4819_beep(0, 0);
+    board_speaker(SPK_TEST, 0);
+    radio_mute();
+    watch_pause(0);
+    draw_main();
+}
+
+static void alarm_toggle(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    if (alarm_on) {
+        alarm_stop();
+        return;
+    }
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    alarm_on = 1;
+    alarm_hz = 1000;
+    alarm_next = 0;
+    if (stock.almode && tx_start(s->tx, s->narrow, s->low_power, s->tx_tone.type, s->tx_tone.value, 0))
+        bk4819_tone_tx(1);
+    show_toast("ALARM: any key stops");
+}
+
+static void alarm_tick(uint32_t now)
+{
+    if (!alarm_on || (int32_t)(now - alarm_next) < 0)
+        return;
+    alarm_next = now + 300;
+    alarm_hz = alarm_hz == 1000 ? 1450 : 1000;
+    if (tx_active()) {                  /* the speaker needs the chip, which is transmitting */
+        bk4819_tone_hz(alarm_hz);
+        if (stock.almode == 2 && ++alarm_n % 10 == 0) {
+            bk4819_tone_tx(0);
+            tx_ani();
+            bk4819_tone_tx(1);
+        }
+    } else if (stock.alarmsound || !stock.almode) {
+        board_speaker(SPK_TEST, 1);
+        bk4819_beep(1, alarm_hz);
+    }
+}
+
+/* Stock's battery save: 3 minutes after the last activity the receiver sleeps, and listens in short
+   spells (stock's tables at 0x800E486: 3 of 8, 2 of 9, 1 of 10 ticks). 1 while asleep. */
+static int save_tick(uint32_t now)
+{
+    static const uint8_t on_t[4] = {0, 3, 2, 1}, off_t[4] = {0, 5, 7, 9};
+    static uint8_t asleep;
+    static uint32_t next;
+    if (!stock.save || now - last_key < 180000 || radio_busy() || screen != SCR_MAIN || msg_receiving()) {
+        if (asleep) {
+            asleep = 0;
+            radio_retune();
+        }
+        return 0;
+    }
+    if ((int32_t)(now - next) >= 0) {
+        asleep ^= 1;
+        next = now + (asleep ? off_t[stock.save] : on_t[stock.save]) * 100u;
+        if (asleep)
+            radio_sleep();
+        else
+            radio_retune();
+    }
+    return asleep;
+}
+
 /* What a side key does (stock's PF2 = Side 2, PF3 = Side 1, Top key). press: 1 going down, 0 coming
    up, which only the keys held down care about. */
 static void side_function(uint8_t fn, int press)
@@ -1326,6 +1438,9 @@ static void side_function(uint8_t fn, int press)
             stop_activity();
         else
             start_scan();
+        break;
+    case FN_SOS:
+        alarm_toggle();
         break;
     case FN_REVERSE:
         s->reverse ^= 1;
@@ -1828,6 +1943,12 @@ static void stock_check(void)
     stock.beep &= 1;
     stock.voice &= 1;
     if (stock.autolk > 3) stock.autolk = 0;
+    if (stock.save > 3) stock.save = 0;
+    if (stock.vox > 10) stock.vox = 0;
+    if (stock.voxd > 15) stock.voxd = 0;
+    if (stock.pttlt > 6) stock.pttlt = 0;
+    if (stock.almode > 2) stock.almode = 0;
+    stock.alarmsound &= 1;
     if (stock.menuquit > 10) stock.menuquit = 1;
     if (stock.screv > 2) stock.screv = 1;
     if (stock.mdfa > 2) stock.mdfa = 1;
@@ -1930,6 +2051,10 @@ void ui_key(const key_event_t *ev)
             editing = 0;
         }
         key_main(ev);
+        return;
+    }
+    if (alarm_on && ev->type == KEV_PRESS) {
+        alarm_stop();
         return;
     }
     if (!light_on) {                        /* the first key only wakes the display */
@@ -2084,6 +2209,34 @@ void progmode_changed(void)
     reload = 1;
 }
 
+/* Stock's VOX: the microphone level on ADC channel 0 against a threshold, 8 lower while transmitting;
+   it holds for VOX delay after the level drops. Not while something is received or going on. */
+static void vox_tick(uint32_t now)
+{
+    static const uint8_t level[11] = {127, 21, 31, 41, 51, 61, 71, 81, 91, 101, 111};
+    static uint8_t vox_tx;
+    static uint32_t vox_until, next;
+    if (!stock.vox || screen != SCR_MAIN || (int32_t)(now - next) < 0)
+        return;
+    next = now + 50;
+    if (vox_tx && !tx_active()) {
+        vox_tx = 0;
+        return;
+    }
+    int loud = (adc_read(0) >> 4) > level[stock.vox < 11 ? stock.vox : 10] - (vox_tx ? 8 : 0);
+    if (loud)
+        vox_until = now + (stock.voxd + 5u) * 100;
+    if (vox_tx) {
+        if ((int32_t)(now - vox_until) >= 0) {
+            vox_tx = 0;
+            ptt_up();
+        }
+    } else if (loud && !tx_active() && !tx_timed_out && !radio_busy() && !searching && scan_mode() == SCAN_OFF) {
+        vox_tx = 1;
+        ptt_down();
+    }
+}
+
 void ui_tick(void)
 {
     uint32_t now = millis();
@@ -2159,7 +2312,7 @@ void ui_tick(void)
         }
         if (e == SCAN_EV_HOLD || e == SCAN_EV_RESUME)
             ev = e == SCAN_EV_HOLD ? WATCH_EV_OPEN : WATCH_EV_CLOSE;
-    } else {
+    } else if (!save_tick(now)) {
         ev = watch_poll();
         if (ev != WATCH_EV_NONE && screen == SCR_MAIN) {
             draw_slot(watch_rx_slot());
@@ -2209,6 +2362,8 @@ void ui_tick(void)
                 draw_hint();
         }
     }
+    alarm_tick(now);
+    vox_tick(now);
     if (tail_held && !radio_busy()) {
         tail_held = 0;
         radio_audio_hold(HOLD_TAIL, 0);
