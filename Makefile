@@ -22,6 +22,7 @@ C_SOURCES = \
   drivers/lcd.c \
   drivers/keypad.c \
   drivers/bk4819.c \
+  drivers/bk1080.c \
   drivers/spiflash.c \
   src/board.c \
   src/radio.c \

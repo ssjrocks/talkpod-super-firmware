@@ -93,7 +93,8 @@ The marks on a slot show its set-up:
 - `X`: transmit-off;
 - `N` / `W` / `AM`: bandwidth;
 - `H` / `L`: power;
-- `T` or `D`: a CTCSS or DCS tone;
+- `T`, `D` or `E`: a CTCSS or DCS tone, or stock's ENCRY code (a private code squelch: other radios
+  stay quiet, but the voice itself isn't scrambled);
 - `S` / `R`: a fixed or rolling voice scrambler.
 
 While transmitting, the slot shows the transmit frequency.
@@ -123,8 +124,7 @@ Both are privacy against casual listening, not security.
 UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), BACK
 leaves. Settings are saved 3 s after the last change and survive power-off. They're stock's own settings where
 stock has the same one. Talkpod Manager shows them on its Settings page: Read brings in what the radio
-has, Write sends your changes. Side key functions FM radio, Light, NOAA, DTMF and Remote aren't there
-yet and say so.
+has, Write sends your changes. Side key functions Light, DTMF and Remote aren't there and say so.
 
 | Item | Values |
 |---|---|
@@ -169,6 +169,14 @@ yet and say so.
 | Menu exit | leaves the menu after this long without a key |
 | Side 2, Side 2 long, Side 1, Top key | FM radio, TX power, Scan, Search, Light, NOAA, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
 | About | firmware version, board, battery, number of channels |
+
+## FM radio
+
+A side key set to **FM radio** opens it (65.0–108.0 MHz). UP / DOWN tune by 0.1 MHz, or type the
+frequency (`1 0 1 5` is 101.5 MHz; `8 7 5` and MENU is 87.5). BACK goes back to the radio, and PTT
+transmits at once. Calls aren't heard while it plays.
+
+A side key set to **NOAA** puts the slot's VFO on the next weather channel at each press.
 
 ## Typing text
 

@@ -89,7 +89,7 @@ void board_init(void);
 int  board_hwver2(void);                    /* bootloader tag "HWVER02" at 0x08000300 */
 void board_rf_path(uint32_t freq_10hz, int mode);
 void board_led(int red, int green);
-enum { SPK_RADIO = 1, SPK_VOICE = 2, SPK_TEST = 4 };
+enum { SPK_RADIO = 1, SPK_VOICE = 2, SPK_TEST = 4, SPK_FM = 8 };
 void board_speaker(int who, int on);
 void board_power_poll(void);                /* every 10 ms: powers off when the switch is off */
 

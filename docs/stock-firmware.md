@@ -146,6 +146,20 @@ Measured from the code; field names as CHIRP's.
 - **DTMF** (table 0x800E78A, gains REG_70 0xC5C5): speeds at 0xA007 on, 0xA008 off (50, 100, 200, 300,
   500 ms); PTT-ID groups from 0xA020, 16 bytes each; ANI codes from 0xB000, 3 bytes each.
 
+## FM broadcast (BK1080)
+
+Entry 0x80044C4; a non-zero fmradio byte means FM is off. Range 65.0–108.0 MHz, in 0.1 MHz units.
+Bit-banged I2C on PF6 / PA3 (0x8000F08): address 0x80, register << 1, values high byte first. Start:
+registers 0–33 from the table at 0x800E3D2, then 25 ms (0x8000D34). Tune (0x8000E94), with offset =
+f - 650: register 3 = 0; register 5 = 0x0ADB below 76 MHz, otherwise 0x0A5B and offset - 110;
+register 3 = offset; register 3 = 0x8000 | offset. Register 2 bit 14 is the mute (0x8000D50).
+
+The BK4819 shares PA3, so SCL must stay low when idle.
+
+The side function names in the stock image's text are NOAA, SEARCH, SCAN, RADIO, TX POWER, Remote
+Scan, SOS and PTT B. CHIRP's list also has Flashlight and DTMF, which are for other radios on the
+same driver; what Remote Scan does is not known yet.
+
 ## ENCRY (measured with tools/re/call_stock.py, 2026-10-31)
 
 ENCRY is **not voice privacy**. It is a private sub-audible code, a code squelch. Stock never
@@ -154,7 +168,8 @@ writes REG_31, so the BK4819's voice inversion scrambler is not used, and the au
 - **Channel field:** byte 15 bits 5–4 (0 off, 1–3). The channel loader 0x8007da8 copies it to RAM
   0x2000067c, beside narrow (0x2000067b), busy lockout and PTT-ID.
 - **Transmit:** PTT key-up 0x800bff8 passes it to 0x80088f0. That sends a 24-bit word at the DCS rate
-  in place of the channel's tone: REG_51 = 0x8080, REG_07 = 0x0AD7, REG_08 = low / 0x8000 | high half:
+  in place of no tone or CTCSS (0x8001334; a DCS channel ignores ENCRY): REG_51 = 0x8080 | DCS level,
+  REG_07 = 0x0AD7, REG_08 = low / 0x8000 | high half. Without a tone:
 
   | ENCRY | REG_08 | Word |
   |---|---|---|
@@ -162,10 +177,12 @@ writes REG_31, so the BK4819's voice inversion scrambler is not used, and the au
   | 2 | 0x09D1, 0x8493 | 0x4939D1 |
   | 3 | 0x09F0, 0x8323 | 0x3239F0 |
 
-  The low 12 bits are shaped like DCS (0x800 | octal 644, 721, 760), but the high bits are not the
-  Golay parity of those codes. No standard DCS decoder matches them.
-- **Receive:** 0x800861c opens the speaker only after the code was detected (0x8009b40) three times
-  in a row. A radio without the code stays quiet, but any radio with open squelch hears the voice.
+  These are the Golay words of 0x15, 0x16 and 0x19, rotated left 3 in 23 bits, inverted, and byte-swapped
+  (0x8004CF4), so no standard DCS decoder matches them. With CTCSS, the low 9 bits of the tone value
+  are the code, and the word is changed by another rule for each ENCRY value. In either case, bits 11:9
+  are then forced to 4. `encry_word()` in `drivers/bk4819.c` matches stock on all six cases tried.
+- **Receive:** the same registers; 0x800861c opens the speaker only after the code was detected
+  (0x8009b40: REG_0C bit 14, as DCS) three times in a row. A radio without the code stays quiet, but any radio with open squelch hears the voice.
 
 ## External flash (SPI0, W25Q16-compatible; this radio: Zbit ZB25VQ16, ID 5E 60 15)
 

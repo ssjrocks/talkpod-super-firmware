@@ -8,7 +8,8 @@ enum { BK_AF_MUTE, BK_AF_FM, BK_AF_AM };
 void     bk4819_init(void);                     /* GPIO + the stock register init */
 void     bk4819_write(uint8_t reg, uint16_t val);
 uint16_t bk4819_read(uint8_t reg);
-enum { BK_TONE_NONE, BK_TONE_CTCSS, BK_TONE_DCS, BK_TONE_DCS_INV };   /* tone value: Hz x 10 / 9-bit DCS code */
+enum { BK_TONE_NONE, BK_TONE_CTCSS, BK_TONE_DCS, BK_TONE_DCS_INV, BK_TONE_ENCRY };   /* tone value: Hz x 10 / 9-bit
+                                                   DCS code / stock's ENCRY << 12 | the channel's CTCSS */
 enum { BK_SCRAMBLE_ROLL = 11 };                 /* scramble: 0 off, 1-10 the UV-K5's types, or rolling */
 void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
                    int scramble);               /* stock receive start */

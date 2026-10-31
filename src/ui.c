@@ -14,6 +14,7 @@
 #include "adc.h"
 #include "board.h"
 #include "bk4819.h"
+#include "bk1080.h"
 #include "channels.h"
 #include "debug.h"
 #include "gfx.h"
@@ -47,7 +48,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
@@ -261,7 +262,8 @@ static void draw_slot(int i)
     mp = put_str(put_str(mp, (fscan ? channel_is_am(f) : s->am) ? "AM " : s->narrow ? "N " : "W "),
                  s->low_power ? "L" : "H");
     if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
-        mp = put_str(mp, s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
+        mp = put_str(mp, s->rx_tone.type == TONE_ENCRY || s->tx_tone.type == TONE_ENCRY ? " E"
+                         : s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
     if (s->scramble)
         put_str(mp, s->scramble == BK_SCRAMBLE_ROLL ? " R" : " S");
     int mx = 122 - gfx_text_width(&font_5x8, mode);
@@ -1063,6 +1065,104 @@ static void key_fscan(const key_event_t *ev)
     draw_fscan();
 }
 
+/* ---- FM broadcast radio (a side key set to FM radio) ------------------------------------------ */
+
+static uint8_t fm_len;
+static char fm_digits[5];
+
+static void draw_fm(void)
+{
+    char s[8], *p;
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "FM radio", C_TEXT, C_PANEL);
+    lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
+    if (fm_len) {
+        memcpy(s, fm_digits, fm_len);
+        s[fm_len] = 0;
+    } else {
+        p = put_dec(s, roll_cfg.fm / 10u);
+        *p++ = '.';
+        put_dec(p, roll_cfg.fm % 10u);
+    }
+    int x = gfx_aa_text(6, 30, &font_digits21, s, C_AMBER, C_BG);
+    gfx_text(x + 3, 41, &font_5x8, "MHz", C_DIM, C_BG);
+    gfx_text(4, 76, &font_5x8, "UP / DOWN tune", C_DIM, C_BG);
+    gfx_text(4, 86, &font_5x8, "0-9 type, MENU sets", C_DIM, C_BG);
+    gfx_text(4, 96, &font_5x8, "BACK leave, PTT talks", C_DIM, C_BG);
+}
+
+static void open_fm(void)
+{
+    if (stock.fmradio) {
+        show_toast("FM radio is off (Talkpod Manager)");
+        return;
+    }
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    radio_mute();
+    radio_sleep();
+    if (roll_cfg.fm < 650 || roll_cfg.fm > 1080)
+        roll_cfg.fm = 1000;
+    bk1080_on();
+    bk1080_tune(roll_cfg.fm);
+    board_speaker(SPK_FM, 1);
+    fm_len = 0;
+    screen = SCR_FM;
+    draw_fm();
+}
+
+static void close_fm(void)
+{
+    board_speaker(SPK_FM, 0);
+    bk1080_off();
+    roll_save();
+    watch_pause(0);
+    radio_retune();
+    screen = SCR_MAIN;
+}
+
+static void fm_commit(void)
+{
+    uint32_t v = 0;
+    for (int i = 0; i < fm_len; i++)
+        v = v * 10 + (uint32_t)(fm_digits[i] - '0');
+    fm_len = 0;
+    if (v < 650 || v > 1080) {
+        show_toast("65.0 to 108.0 MHz");
+    } else {
+        roll_cfg.fm = (uint16_t)v;
+        bk1080_tune(roll_cfg.fm);
+    }
+}
+
+static void key_fm(const key_event_t *ev)
+{
+    int d = digit_of(ev->key);
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    if (d >= 0) {
+        fm_digits[fm_len++] = (char)('0' + d);
+        if (fm_len == 4)
+            fm_commit();
+    } else if (ev->key == KEY_MENU && fm_len) {
+        fm_commit();
+    } else if (ev->key == KEY_UP || ev->key == KEY_DOWN) {
+        int f = roll_cfg.fm + (ev->key == KEY_UP ? 1 : -1);
+        roll_cfg.fm = (uint16_t)(f > 1080 ? 650 : f < 650 ? 1080 : f);
+        bk1080_tune(roll_cfg.fm);
+    } else if (ev->key == KEY_BACK) {
+        if (fm_len) {
+            fm_len = 0;
+        } else {
+            close_fm();
+            draw_main();
+            return;
+        }
+    }
+    draw_fm();
+}
+
 static void redraw(void)
 {
     if (screen == SCR_MAIN)
@@ -1079,6 +1179,8 @@ static void redraw(void)
         draw_pager();
     else if (screen == SCR_FSCAN)
         draw_fscan();
+    else if (screen == SCR_FM)
+        draw_fm();
     else
         draw_about();
 }
@@ -1605,6 +1707,25 @@ static void side_function(uint8_t fn, int press)
     case FN_SOS:
         alarm_toggle();
         break;
+    case FN_FM:
+        open_fm();
+        if (screen == SCR_FM)
+            return;
+        break;
+    case FN_NOAA: {                     /* the weather channels, one more each press, in the VFO */
+        static const uint32_t wx[7] = {16255000, 16240000, 16247500, 16242500, 16245000, 16250000, 16252500};
+        static uint8_t n;
+        char t[12];
+        stop_activity();
+        s->is_channel = 0;
+        s->vfo = wx[n];
+        s->vfo_am = 0;
+        n = (uint8_t)((n + 1) % 7);
+        watch_update(watch_selected());
+        put_dec(put_str(t, "NOAA "), n ? n : 7u);
+        show_toast(t);
+        break;
+    }
     case FN_REVERSE:
         s->reverse ^= 1;
         watch_update(watch_selected());
@@ -2211,6 +2332,8 @@ void ui_key(const key_event_t *ev)
     last_key = millis();
     if (ev->key == KEY_PTT) {               /* PTT always works: any screen, keys locked, display off */
         apply_backlight(1);
+        if (screen == SCR_FM)
+            close_fm();
         if (screen != SCR_MAIN) {
             screen = SCR_MAIN;
             editing = 0;
@@ -2251,6 +2374,8 @@ void ui_key(const key_event_t *ev)
         key_pager(ev);
     else if (screen == SCR_FSCAN)
         key_fscan(ev);
+    else if (screen == SCR_FM)
+        key_fm(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();

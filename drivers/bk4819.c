@@ -140,8 +140,42 @@ static uint32_t golay(uint16_t code)
     return cw | (w & 0x0FFE) << 11;
 }
 
+/* Stock's ENCRY (0x8001334), a private code squelch, not voice privacy: a DCS-style word at the DCS rate,
+   REG_51 0x8080 | DCS level, detected as DCS in REG_0C. e 1-3; ctcss: the channel's tone, or 0. */
+static uint32_t encry_word(int e, uint16_t ctcss)
+{
+    static const uint8_t no_tone[3] = {0x15, 0x16, 0x19};
+    uint32_t w;
+    if (!ctcss) {
+        w = golay(no_tone[e - 1]);
+        for (int i = 0; i < 3; i++)             /* 0x8004CF4 */
+            w = (w << 1 & 0x7FFFFF) | (w >> 22 & 1);
+        w = ~w;
+        w = (w & 0xFF) << 16 | (w & 0xFF00) | (w >> 16 & 0xFF);
+    } else {
+        uint16_t c = ctcss & 0x1FF;
+        if (e == 1)
+            w = ((golay(c) & 0x7AFD76) ^ 0xFACDB) + 0x181818;
+        else if (e == 2)
+            w = golay((uint16_t)((c & 0x1C0) << 2 | (c & 0x38) << 1 | (c & 7)));
+        else
+            w = ((0x7FFFFF & ~golay(c)) | 0xE00) ^ 0xF;
+    }
+    if ((w >> 9 & 7) != 4)
+        w = (w & 0xFFF1FF) | 0x800;
+    return w;
+}
+
 static void tone_regs(int type, uint16_t value, int tx)
 {
+    if (type == BK_TONE_ENCRY) {
+        uint32_t w = encry_word(value >> 12, value & 0x0FFF);
+        bk4819_write(0x51, (uint16_t)(0x8080 | gain_dcs));
+        bk4819_write(0x07, 0x0AD7);
+        bk4819_write(0x08, (uint16_t)(w & 0x0FFF));
+        bk4819_write(0x08, (uint16_t)(0x8000 | (w >> 12 & 0x0FFF)));
+        return;
+    }
     if (type == BK_TONE_DCS || type == BK_TONE_DCS_INV) {
         uint32_t cw = golay(value);
         bk4819_write(0x51, (uint16_t)((tx && type == BK_TONE_DCS_INV ? 0xA000 : 0x8000) | gain_dcs));

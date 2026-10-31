@@ -9,7 +9,7 @@
 #define CHANNEL_COUNT 512
 
 enum { TONE_NONE = BK_TONE_NONE, TONE_CTCSS = BK_TONE_CTCSS, TONE_DCS = BK_TONE_DCS,
-       TONE_DCS_INV = BK_TONE_DCS_INV };
+       TONE_DCS_INV = BK_TONE_DCS_INV, TONE_ENCRY = BK_TONE_ENCRY };
 
 #define SCRAMBLE_ROLL_STORED 60         /* the scramble field (byte 14 bits 7-2) of a rolling channel */
 

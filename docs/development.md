@@ -120,8 +120,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
   emulator-tested, but not yet heard by another radio.
 - **Scrambler:** works on air (1.11), but plain inversion leaves words partly understandable. It is
   the UV-K5's method (REG_31 bit 1, REG_71); stock has no voice scrambler.
-- **Still to come from stock:** ENCRY (a private code squelch, not voice privacy; see
-  stock-firmware.md), FM broadcast radio, the side key functions Light, NOAA, DTMF and Remote.
+- **Still to come from stock:** Remote Scan (unknown), DTMF side tone, tone scanning.
 - **Channels:** not editable on the radio, and program mode has no channel read/write.
 - **On-air checks:** messages with a UV-K5; APRS and POCSAG with an SDR (multimon-ng, Direwolf) or a
   pager. That includes POCSAG polarity and bit order, AFSK and FSK deviation, and whether APRS

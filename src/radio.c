@@ -167,8 +167,8 @@ int radio_monitor(void)
 /* the channel's receive tone is there (or it has none): REG_0C bit 10 CTCSS, 14 DCS, 15 inverted DCS */
 static int tone_heard_in(uint16_t r0c)
 {
-    static const uint16_t bit[] = {0, 0x0400, 0x4000, 0x8000};
-    return am || tone == BK_TONE_NONE || (r0c & bit[tone & 3]);
+    static const uint16_t bit[] = {0, 0x0400, 0x4000, 0x8000, 0x4000};
+    return am || tone == BK_TONE_NONE || (r0c & bit[tone]);
 }
 
 static int tone_heard(void)

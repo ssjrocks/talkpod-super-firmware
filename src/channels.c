@@ -71,6 +71,14 @@ int channel_read(int n, channel_t *ch)
     ch->low_power = (r[14] & 3) == 1;
     ch->narrow = (r[15] >> 6) & 1;
     ch->encrypt = (r[15] >> 4) & 3;
+    if (ch->encrypt) {                          /* stock's ENCRY takes the place of no tone or CTCSS */
+        tone_t *t[2] = {&ch->rx_tone, &ch->tx_tone};
+        for (int i = 0; i < 2; i++)
+            if (t[i]->type == TONE_NONE || t[i]->type == TONE_CTCSS) {
+                t[i]->value = (uint16_t)(ch->encrypt << 12 | (t[i]->type == TONE_CTCSS ? t[i]->value : 0));
+                t[i]->type = TONE_ENCRY;
+            }
+    }
     ch->bcl = (r[15] >> 3) & 1;
     ch->scan = (r[15] >> 2) & 1;
     int len = 0;
