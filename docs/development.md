@@ -69,6 +69,9 @@ Helpers:
 - `tools/pocsag_emu.py`: `rx RIC TEXT [numeric]` makes a capture; `tx LOG` decodes a sent page from
   the FIFO writes.
 - `tools/splash.py GIF --image IN OUT` puts a splash into a flash image.
+- `tools/roll.py`: the rolling scrambler's reference path. `cfg` puts a key and rolling channels into
+  a flash image, `burst` makes an `--fsk-rx` capture, and `check LOG KEY` compares the REG_71 writes of
+  a run against the path.
 
 ## Other tools
 
@@ -102,6 +105,8 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 | APRS send | | ✓ frames decode with valid FCS |
 | APRS receive | | ✓ with ideal captures; the BK4819 demodulator is untested |
 | POCSAG send / receive | | ✓ |
+| Scrambler, fixed (UV-K5 types) | ✓ heard on another radio (types 1, 2): weak | ✓ register values |
+| Rolling scrambler | | ✓ burst, glide sent and received against `tools/roll.py`, other key refused |
 | Boot splash upload, `i` / `G` | ✓ | ✓ playback |
 
 ## Known issues and ideas

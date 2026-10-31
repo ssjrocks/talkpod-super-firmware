@@ -8,6 +8,7 @@
 #include "spiflash.h"
 #include "adc.h"
 #include "radio.h"
+#include "roll.h"
 #include "shell.h"
 #include "ui.h"
 #include "voice.h"
@@ -47,6 +48,7 @@ int main(void)
         progmode_poll();
         fwdgt_feed();
         voice_poll();
+        roll_poll();
         if ((int32_t)(millis() - next) >= 0) {
             next += KEY_SCAN_MS;
             keypad_scan();

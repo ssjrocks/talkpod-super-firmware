@@ -27,6 +27,7 @@
 #include "msg.h"
 #include "aprs.h"
 #include "pocsag.h"
+#include "roll.h"
 #include "version.h"
 
 #define C_BG     RGB(8, 10, 18)
@@ -242,7 +243,9 @@ static void draw_slot(int i)
         mp = put_str(mp, s->tx > s->freq ? "+ " : "- ");    /* repeater shift / split */
     mp = put_str(put_str(mp, s->am ? "AM " : s->narrow ? "N " : "W "), s->low_power ? "L" : "H");
     if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
-        put_str(mp, s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
+        mp = put_str(mp, s->rx_tone.type == TONE_CTCSS || s->tx_tone.type == TONE_CTCSS ? " T" : " D");
+    if (s->scramble)
+        put_str(mp, s->scramble == BK_SCRAMBLE_ROLL ? " R" : " S");
     int mx = 122 - gfx_text_width(&font_5x8, mode);
     int room = mx - 3 - (cw + 9);                           /* the name stops short of the marks */
     const font_t *nf = gfx_text_width(&font_7x13b, name) <= room ? &font_7x13b : &font_6x10;
@@ -319,11 +322,11 @@ static void draw_main(void)
 
 enum { M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
        M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
-       M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_KEYBEEP, M_VOICE, M_SCAN, M_ABOUT, M_COUNT };
+       M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN, M_ABOUT, M_COUNT };
 static const char *const menu_names[M_COUNT] = {
     "Messages", "APRS", "Pager", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
     "Backlight", "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon",
-    "Pager RIC", "Pager speed", "Pager invert", "Key beep", "Voice", "Scan channels", "About",
+    "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels", "About",
 };
 static const char *const msg_speed_names[] = {"1200", "700", "450"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
@@ -354,6 +357,7 @@ static void menu_value(int item, char *s)
     case M_PAGER_RIC:  put_dec(s, pager_cfg.ric); break;
     case M_PAGER_SPEED: put_dec(s, pager_bauds[pager_cfg.speed]); break;
     case M_PAGER_INVERT: put_str(s, pager_cfg.invert ? "On" : "Off"); break;
+    case M_ROLL_KEY:   put_str(s, roll_cfg.key[0] ? "set" : "not set"); break;
     case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
     case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
     default: break;
@@ -530,7 +534,7 @@ static void open_messages(void)
 
 static int digit_of(int key);
 
-enum { E_TEXT, E_CALL, E_RIC };          /* what is typed: any text, a callsign, digits */
+enum { E_TEXT, E_CALL, E_RIC, E_KEY };   /* what is typed: any text, a callsign, digits, a key */
 
 /* a key typed into buf (len characters, at most max) */
 static void type_key(char *buf, uint8_t *len, int max, int digit, int hold, int kind)
@@ -552,7 +556,7 @@ static void type_key(char *buf, uint8_t *len, int max, int digit, int hold, int 
         }
     }
     char c = hold ? (char)('0' + digit) : set[tap_n];
-    if (lower && kind == E_TEXT && c >= 'A' && c <= 'Z')
+    if (lower && (kind == E_TEXT || kind == E_KEY) && c >= 'A' && c <= 'Z')
         c = (char)(c + 32);
     buf[(*len)++] = c;
     buf[*len] = 0;
@@ -575,7 +579,7 @@ static int text_key(const key_event_t *ev, char *buf, uint8_t *len, int max, int
         }
         return 1;
     }
-    if (ev->key == KEY_FM && ev->type == KEV_PRESS && kind == E_TEXT) {
+    if (ev->key == KEY_FM && ev->type == KEV_PRESS && (kind == E_TEXT || kind == E_KEY)) {
         lower ^= 1;
         tap_key = 0xFF;
         return 1;
@@ -743,7 +747,7 @@ static void open_pager(void)
     draw_pager();
 }
 
-/* ---- text editor (menu: APRS call, APRS beacon, pager RIC) ---------------------------------- */
+/* ---- text editor (menu: APRS call, APRS beacon, pager RIC, scramble key) ------------------- */
 
 static char ebuf[16];
 static uint8_t elen, edit_kind;
@@ -765,10 +769,11 @@ static void draw_edit_field(void)
 
 static void draw_edit(void)
 {
-    static const char *const text[3][3] = {
+    static const char *const text[4][3] = {
         {"APRS beacon", "Status text, sent with", "MENU on the APRS screen"},
         {"APRS call", "Callsign-SSID, e.g.", "VK2ABC-7 (1 key: -)"},
         {"Pager RIC", "The pager address the", "pager screen sends to"},
+        {"Scramble key", "For Rolling channels;", "the same on every radio"},
     };
     const char *const *t = text[edit_kind];
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
@@ -778,7 +783,7 @@ static void draw_edit(void)
     gfx_text(4, 28, &font_5x8, t[2], C_DIM, C_BG);
     gfx_text(4, 70, &font_5x8, "MENU save", C_DIM, C_BG);
     gfx_text(4, 80, &font_5x8, "BACK delete / cancel", C_DIM, C_BG);
-    if (edit_kind == E_TEXT)
+    if (edit_kind == E_TEXT || edit_kind == E_KEY)
         gfx_text(4, 90, &font_5x8, "FM abc / ABC", C_DIM, C_BG);
     draw_edit_field();
 }
@@ -788,6 +793,8 @@ static void open_edit(int kind)
     edit_kind = (uint8_t)kind;
     if (kind == E_RIC)
         put_dec(ebuf, pager_cfg.ric);
+    else if (kind == E_KEY)
+        strcpy(ebuf, roll_cfg.key);
     else
         strcpy(ebuf, kind == E_CALL ? aprs_cfg.call : aprs_cfg.text);
     elen = (uint8_t)strlen(ebuf);
@@ -1010,6 +1017,10 @@ static void ptt_down(void)
         ptt_refused("Channel busy");         /* busy channel lockout */
         return;
     }
+    if (s->scramble == BK_SCRAMBLE_ROLL && !roll_cfg.key[0]) {
+        ptt_refused("Set Scramble key (menu)");
+        return;
+    }
     stop_activity();
     voice_stop();
     watch_pause(1);
@@ -1019,6 +1030,14 @@ static void ptt_down(void)
         watch_pause(0);
         ptt_paused = 0;
         show_toast(tx_allowed(s->tx) ? "TX failed" : "TX not allowed here");
+        draw_main();
+        return;
+    }
+    if (s->scramble == BK_SCRAMBLE_ROLL && !roll_tx(s->narrow)) {   /* the burst, then voice */
+        tx_stop();
+        watch_pause(0);
+        ptt_paused = 0;
+        show_toast("TX failed");
         draw_main();
         return;
     }
@@ -1386,6 +1405,9 @@ static void key_edit(const key_event_t *ev)
             }
             pager_cfg.ric = ric;
             pocsag_save();
+        } else if (edit_kind == E_KEY) {
+            strcpy(roll_cfg.key, ebuf);
+            roll_save();
         } else {
             strcpy(edit_kind == E_CALL ? aprs_cfg.call : aprs_cfg.text, ebuf);
             aprs_save();
@@ -1508,8 +1530,10 @@ static void key_menu(const key_event_t *ev)
             open_aprs();
         } else if (menu_pos == M_PAGER) {
             open_pager();
-        } else if (menu_pos == M_APRS_CALL || menu_pos == M_APRS_TEXT || menu_pos == M_PAGER_RIC) {
-            open_edit(menu_pos == M_APRS_CALL ? E_CALL : menu_pos == M_PAGER_RIC ? E_RIC : E_TEXT);
+        } else if (menu_pos == M_APRS_CALL || menu_pos == M_APRS_TEXT || menu_pos == M_PAGER_RIC ||
+                   menu_pos == M_ROLL_KEY) {
+            open_edit(menu_pos == M_APRS_CALL ? E_CALL : menu_pos == M_PAGER_RIC ? E_RIC
+                      : menu_pos == M_ROLL_KEY ? E_KEY : E_TEXT);
         } else if (menu_pos == M_ABOUT) {
             screen = SCR_ABOUT;
             draw_about();
@@ -1627,6 +1651,7 @@ void ui_init(void)
     msg_init(BK_FSK_1200, 1);
     aprs_init();
     pocsag_init();
+    roll_init();
     gather(&v);                         /* defaults for anything an older record lacks */
     if (settings_load(SET_MAIN, &v, sizeof v)) {
         apply(&v);
@@ -1698,6 +1723,15 @@ void ui_key(const key_event_t *ev)
 static void messages(uint32_t now)
 {
     int e = msg_poll();
+    if (e & MSG_EV_ROLL) {
+        uint32_t end;
+        int r = roll_rx(msg_roll_burst(&end), end);
+        debug_puts(r > 0 ? "rolling: in step\r\n" : r < 0 ? "rolling: another key\r\n" : "rolling: bad burst\r\n");
+        if (r)
+            show_toast(r > 0 ? "Rolling scramble" : "Scramble key differs");
+        if (r && screen == SCR_MAIN)
+            draw_hint();
+    }
     if (e & MSG_EV_RECEIPT_DUE && !searching) {
         int scanning = scan_mode() != SCAN_OFF;
         voice_stop();

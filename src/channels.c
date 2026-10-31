@@ -65,8 +65,9 @@ int channel_read(int n, channel_t *ch)
     ch->tx_tone = tone_decode((uint16_t)(r[10] | r[11] << 8));
     ch->scode = r[12] & 0x0F;
     ch->pttid = r[13] & 3;
-    ch->scramble = (uint8_t)((r[14] >> 2) & 0x3F);
-    ch->scramble = ch->scramble == 8 ? 2 : ch->scramble ? 1 : 0;
+    uint8_t s = (uint8_t)((r[14] >> 2) & 0x3F);
+    ch->scramble = s == SCRAMBLE_ROLL_STORED ? BK_SCRAMBLE_ROLL
+                 : s % 4 == 0 && s <= 40 ? s / 4 : 1;    /* 4 x type; 0 off; anything else type 1 */
     ch->low_power = (r[14] & 3) == 1;
     ch->narrow = (r[15] >> 6) & 1;
     ch->encrypt = (r[15] >> 4) & 3;

@@ -73,7 +73,7 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 
 | Command | Reply |
 |---|---|
-| `i` | `fw=TSF ver=1.11 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H`: identifies this firmware, where the splash goes (address + size, hex) and which splash headers it reads |
+| `i` | `fw=TSF ver=1.12 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H`: identifies this firmware, where the splash goes (address + size, hex) and which splash headers it reads |
 | `G` | plays the boot splash now, then `ok`, or `no splash`. The screen returns to what it showed |
 | `E ADDR` | erases the 4 KB sector at ADDR (hex): `ok`, or `refused` outside 0x110000–0x1EFFFF |
 | `W ADDR LEN` | then LEN raw bytes (1–256) and their CRC-16/XMODEM, big-endian. Programs them at ADDR (hex) into erased flash: `ok`, `crc`, `refused` or `timeout` (bytes not all there within 2 s). Wait ~50 ms after the command line before sending the bytes |
@@ -108,7 +108,7 @@ implementation; it is self-contained (Pillow and pyserial only) and can be impor
 import splash                                   # tools/splash.py
 blob, info = splash.convert("logo.gif")         # A36G bytes; info: frames, ms, bytes, capacity
 with splash.Radio("/dev/ttyUSB0") as r:
-    r.info()                                    # {'fw': 'TSF', 'ver': '1.11', 'splash': '00120000+0007D000', ...}
+    r.info()                                    # {'fw': 'TSF', 'ver': '1.12', 'splash': '00120000+0007D000', ...}
     r.upload(blob, progress=lambda done, total: ...)
     r.play()                                    # preview
     # r.remove()                                # no splash at all
@@ -176,7 +176,7 @@ screen).
 ## Other stored data
 
 **Settings** (`src/settings.c`): logs of 32-byte records, one 4 KB sector per area: 0x1E0000 main,
-0x1E1000 APRS, 0x1E2000 pager.
+0x1E1000 APRS, 0x1E2000 pager, 0x1E3000 scramble key.
 
 | Bytes | Field |
 |---|---|

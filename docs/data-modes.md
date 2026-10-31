@@ -53,6 +53,29 @@ doesn't reach the modulator and the radio sends a silent carrier. Firmware 1.0�
 every transmit. The first `bk4819_rx()` afterwards sets it up again. A data send configures the
 modem itself after `bk4819_tx()`.
 
+## Rolling scrambler
+
+`src/roll.c`, with `tools/roll.py` as the reference. The BK4819 has one voice scrambler: inversion
+around a frequency (REG_31 bit 1, REG_71 = Hz x 10.3244). The MCU never sees audio, so it can't do
+anything stronger. What it can do is move that frequency as you speak. A path both radios work out
+from the key keeps it gliding:
+- **Path:** xorshift32, seeded with FNV-1a(key) ^ IV x 2654435761 (| 1). Each segment glides to a
+  random frequency in 2600–3500 Hz, taking |change| / 3 + 40 + 0..79 ms. So the frequency never
+  changes faster than 3 Hz per ms.
+- **Why gliding:** a timing error of t ms between the two radios only shifts the descrambled pitch by
+  up to 3t Hz. Hopping would garble a slice of every hop instead.
+- **Burst:** at PTT, on the text-message modem (Msg speed), with its own sync word **52 CB 7A 1D**,
+  so UV-K5 messenger radios never sync on it. 8 bytes: 01, IV (4 bytes, little-endian), key check
+  (the top byte of FNV-1a(key)), check (2 bytes: the low half of FNV-1a over bytes 0–5). At 1200
+  bit/s that is about 0.19 s with the preamble; the sender then turns the modem off and the mic
+  on, and glides from the moment the burst ended.
+- **Receiving:** a rolling channel arms the modem for that sync word, with the packet 10 bytes long
+  (2 more than sent, as messages are received). The burst's end is taken from the two times polling
+  saw (sync + 8 bytes, end of packet − 2 bytes, the earlier one minus 3 ms). The receiver glides
+  until its carrier has been gone for 0.4 s or it retunes.
+- **Checked:** in the emulator, the sent and received paths match `tools/roll.py` to within 3 Hz,
+  and a burst for another key is refused. Not yet checked: two radios on air.
+
 ## UV-K5 messages
 
 `src/msg.c`. This is the format of the messenger in

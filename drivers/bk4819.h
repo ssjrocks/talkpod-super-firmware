@@ -9,8 +9,10 @@ void     bk4819_init(void);                     /* GPIO + the stock register ini
 void     bk4819_write(uint8_t reg, uint16_t val);
 uint16_t bk4819_read(uint8_t reg);
 enum { BK_TONE_NONE, BK_TONE_CTCSS, BK_TONE_DCS, BK_TONE_DCS_INV };   /* tone value: Hz x 10 / 9-bit DCS code */
+enum { BK_SCRAMBLE_ROLL = 11 };                 /* scramble: 0 off, 1-10 the UV-K5's types, or rolling */
 void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
-                   int scramble);               /* stock receive start; scramble 0 off, 1-2 */
+                   int scramble);               /* stock receive start */
+void     bk4819_scramble_hz(uint16_t hz);       /* the inversion frequency, now; 0 scrambler off */
 void     bk4819_off(void);                      /* REG_30 = 0: receiver and transmitter off */
 void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value,
                    int scramble);               /* transmit on */
@@ -31,6 +33,11 @@ enum { BK_FSK_1200, BK_FSK_700, BK_FSK_450, BK_FSK_AFSK, BK_FSK_POCSAG, BK_FSK_O
 void     bk4819_fsk_setup(int modem, int rx_len);
 int      bk4819_fsk_send(const uint8_t *data, int len, int narrow);  /* transmitter on; blocks; 1 if sent;
                                                                        len even, at most 255 */
+#define  BK_ROLL_LEN 8                          /* the rolling scrambler's burst */
+int      bk4819_fsk_send_roll(const uint8_t *data, int len, int narrow, int modem);   /* own sync word */
+void     bk4819_fsk_voice(void);                /* still transmitting after a send: modem off, mic on */
+uint32_t bk4819_fsk_sent_ms(void);              /* millis() when the last send finished */
+int      bk4819_fsk_roll_rx(void);              /* 1: listening for the rolling burst, not messages */
 uint16_t bk4819_fsk_word(void);                 /* the next two received bytes, first in the low byte */
 void     bk4819_fsk_rearm(void);                /* clear the FIFO and listen again */
 void     bk4819_fsk_invert(int on);             /* receive with the bits inverted (BK_FSK_AFSK) */

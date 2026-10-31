@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.11**. Builds to about 45 KB of the MCU's 63 KB application flash.
+Version **1.12**. Builds to about 47 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -46,7 +46,8 @@ Version **1.11**. Builds to about 45 KB of the MCU's 63 KB application flash.
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
 | CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | emulator-tested; on-air test pending |
-| Voice scrambler (BK4819 inversion, the UV-K5's types 1 and 2) | working on air; weak: words stay partly understandable |
+| Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working on air; weak: words stay partly understandable |
+| Rolling scrambler: the inversion frequency glides along a keyed path (Super Firmware radios only) | emulator-tested; on-air test pending |
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | emulator-tested; on-air test pending |
 | APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |

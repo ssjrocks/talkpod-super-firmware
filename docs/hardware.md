@@ -255,7 +255,7 @@ This firmware writes **only 0x110000–0x1EFFFF**; `drivers/spiflash.c` refuses 
 | 8–9 / 10–11 | RX / TX tone |
 | 12 | signalling |
 | 13 | PTT ID |
-| 14 | scramble << 2 \| power (0 high, 1 low, 2 medium) |
+| 14 | scramble << 2 \| power (0 high, 1 low, 2 medium). Scramble: 0 off; CHIRP offers 4 SCRAM1 and 8 SCRAM2; Super Firmware 1.12 reads 4 x n as UV-K5 type n (1–10, 2500 + 100n Hz) and 60 as Rolling. Stock firmware doesn't use it |
 | 15 | flags: bit 6 narrow, bits 5–4 ENCRY (stock's private code, 0 off), bit 3 busy lockout, bit 2 scan |
 | 16–18 | code |
 | 19 | (unused) |

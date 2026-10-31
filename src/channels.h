@@ -11,6 +11,8 @@
 enum { TONE_NONE = BK_TONE_NONE, TONE_CTCSS = BK_TONE_CTCSS, TONE_DCS = BK_TONE_DCS,
        TONE_DCS_INV = BK_TONE_DCS_INV };
 
+#define SCRAMBLE_ROLL_STORED 60         /* the scramble field (byte 14 bits 7-2) of a rolling channel */
+
 typedef struct {
     uint8_t type;                   /* TONE_* */
     uint16_t value;                 /* CTCSS: Hz x 10; DCS: the 9-bit code (023 octal = 0x13) */
@@ -22,7 +24,8 @@ typedef struct {
     tone_t rx_tone, tx_tone;
     uint8_t narrow, scan, bcl;
     uint8_t low_power;              /* stock: 0 = high, 1 = low, 2 = medium (shown as high) */
-    uint8_t scramble;               /* 0 off, 1-2 (stored as 4 / 8, CHIRP's SCRAM1 / SCRAM2) */
+    uint8_t scramble;               /* 0 off, 1-10 fixed (stored as 4 x type: 4 / 8 are CHIRP's SCRAM1 /
+                                       SCRAM2), BK_SCRAMBLE_ROLL (stored as SCRAMBLE_ROLL_STORED) */
     uint8_t encrypt;                /* 0 off, 1-3 (stock "ENCRY") */
     uint8_t pttid, scode;           /* PTT-ID: 0 off, 1 BOT, 2 EOT, 3 both; DTMF code group 0-14 */
     char name[13];

@@ -29,7 +29,7 @@ static msg_t hist[HISTORY];
 static uint8_t count, head;                     /* head: where the next message goes */
 static uint8_t modem = BK_FSK_1200, receipts = 1, unread;
 static uint8_t rx_buf[RX_LEN], rx_n, receiving;
-static uint32_t rx_started, receipt_due, receipt_freq;
+static uint32_t rx_started, receipt_due, receipt_freq, roll_end;
 static uint8_t receipt_narrow;
 
 void msg_init(int m, int r)
@@ -153,6 +153,22 @@ static void rx_end(void)
     bk4819_fsk_rearm();
 }
 
+/* When the rolling burst's data ended, from the two times polling saw (each up to 10 ms late): the
+   sync word plus 8 bytes, and the packet's end (it is received as 2 bytes longer than sent). */
+static uint32_t burst_end(uint32_t done)
+{
+    static const uint16_t rate[] = {1200, 700, 450};
+    uint32_t byte_ms = 8000u / rate[modem];
+    uint32_t a = rx_started + BK_ROLL_LEN * 8000u / rate[modem], b = done - 2 * byte_ms;
+    return ((int32_t)(a - b) < 0 ? a : b) - 3;   /* the earlier, less late one; minus the average */
+}
+
+const uint8_t *msg_roll_burst(uint32_t *end_ms)
+{
+    *end_ms = roll_end;
+    return rx_buf;
+}
+
 int msg_poll(void)
 {
     int ev = 0;
@@ -170,9 +186,15 @@ int msg_poll(void)
         store(bk4819_fsk_word());
     if (f & 0x2000) {                           /* the packet is complete */
         if (receiving) {
-            while (rx_n < PKT_LEN)              /* words the 10 ms polling has not fetched yet */
+            int roll = bk4819_fsk_roll_rx();    /* a rolling channel: the scrambler's burst */
+            while (rx_n < (roll ? BK_ROLL_LEN : PKT_LEN))   /* words the 10 ms polling hasn't fetched */
                 store(bk4819_fsk_word());
-            ev |= received() | MSG_EV_RX;
+            if (roll) {
+                roll_end = burst_end(millis());
+                ev |= MSG_EV_ROLL;
+            } else {
+                ev |= received() | MSG_EV_RX;
+            }
         }
         rx_end();
     } else if (receiving && millis() - rx_started > RX_TIMEOUT) {

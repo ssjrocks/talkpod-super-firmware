@@ -107,6 +107,8 @@ void bk4819_init(void)
 
 static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert, fsk_tx_invert;
 static uint8_t fsk_tx_off;                      /* bk4819_tx() switched the modem off */
+static uint8_t fsk_roll_rx, fsk_roll_tx;        /* the rolling scrambler's burst instead of messages */
+static uint32_t fsk_sent_at;                    /* millis() when the last send finished */
 static uint16_t pocsag_baud = 1200;
 static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
@@ -147,16 +149,28 @@ static void tone_regs(int type, uint16_t value, int tx)
     bk4819_write(0x52, 0x0292);
 }
 
-/* the BK4819's voice inversion scrambler (REG_31 bit 1, REG_71 its frequency), types 1 and 2 */
-static void scramble_regs(int type)
+/* the BK4819's voice inversion scrambler (REG_31 bit 1, REG_71 its frequency): the UV-K5's types
+   1-10, 2600-3500 Hz (0x68DC + (type - 1) x 1032). BK_SCRAMBLE_ROLL starts off; src/roll.c glides
+   it with bk4819_scramble_hz() once the sender's burst was heard. */
+static void scramble_word(uint16_t word)        /* REG_71; 0: scrambler off */
 {
     uint16_t r31 = bk4819_read(0x31);
-    if (type) {
-        bk4819_write(0x71, (uint16_t)(0x68DC + (type - 1) * 1032));
+    if (word)
+        bk4819_write(0x71, word);
+    if (word && !(r31 & 2))
         bk4819_write(0x31, r31 | 2);
-    } else if (r31 & 2) {
+    else if (!word && (r31 & 2))
         bk4819_write(0x31, (uint16_t)(r31 & ~2));
-    }
+}
+
+static void scramble_regs(int type)
+{
+    scramble_word(type >= 1 && type <= 10 ? (uint16_t)(0x68DC + (type - 1) * 1032) : 0);
+}
+
+void bk4819_scramble_hz(uint16_t hz)
+{
+    scramble_word((uint16_t)((uint32_t)hz * 103244U / 10000U));
 }
 
 void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
@@ -175,12 +189,24 @@ void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, i
     bk4819_write(0x28, 0x6B38);                  /* RX audio expander, as stock 0x8004980 */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xBFF1);                  /* RX: VCO cal, RX link, AF DAC, PLL, RX DSP */
-    if (fsk_modem != BK_FSK_OFF && fsk_tx_off) {
+    int roll = scramble == BK_SCRAMBLE_ROLL;     /* a rolling channel listens for its burst */
+    int change = roll != fsk_roll_rx;
+    fsk_roll_rx = (uint8_t)roll;                 /* also for a modem that is set up later */
+    if (fsk_modem != BK_FSK_OFF && (fsk_tx_off || change)) {
         fsk_tx_off = 0;
-        bk4819_fsk_setup(fsk_modem, fsk_rx_len);   /* back on after bk4819_tx() switched it off */
+        bk4819_fsk_setup(fsk_modem, fsk_rx_len);   /* back on after bk4819_tx(), or the other sync */
     } else if (fsk_modem != BK_FSK_OFF) {
         fsk_arm();                               /* a fresh FIFO on every frequency */
     }
+}
+
+/* modem off for voice; the next bk4819_rx() sets it up again */
+static void fsk_off(void)
+{
+    bk4819_write(0x59, 0x0000);
+    bk4819_write(0x70, 0x0000);
+    bk4819_write(0x58, 0x0000);
+    fsk_tx_off = fsk_modem != BK_FSK_OFF;
 }
 
 void bk4819_off(void)
@@ -195,12 +221,8 @@ void bk4819_off(void)
    bk4819_fsk_send() sets it up again for a data packet; bk4819_rx() restores it for receiving. */
 void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value, int scramble)
 {
-    if (fsk_modem != BK_FSK_OFF) {
-        bk4819_write(0x59, 0x0000);
-        bk4819_write(0x70, 0x0000);
-        bk4819_write(0x58, 0x0000);
-        fsk_tx_off = 1;
-    }
+    if (fsk_modem != BK_FSK_OFF)
+        fsk_off();
     bk4819_write(0x37, 0x1D0F);
     bk4819_write(0x30, 0x0000);
     bk4819_write(0x38, (uint16_t)freq_10hz);
@@ -331,6 +353,12 @@ static void fsk_regs(int tx, int len)
         sync_b = tx ? 0xAAAA : 0x15D8;
     } else {
         reg58 = r58[fsk_modem];
+        if (tx ? fsk_roll_tx : bk4819_fsk_roll_rx()) {   /* the rolling burst: own sync word, 8 bytes */
+            sync_a = 0x52CB;
+            sync_b = 0x7A1D;
+            if (!tx)
+                len = BK_ROLL_LEN + 2;           /* received as messages are: 2 more than sent */
+        }
     }
     bk4819_write(0x70, 0x00E0);
     bk4819_write(0x72, (uint16_t)(((uint32_t)fsk_rate() * 103244U + 5000) / 10000));
@@ -439,11 +467,39 @@ int bk4819_fsk_send(const uint8_t *data, int len, int narrow)
                 bk4819_write(0x5F, (uint16_t)(data[i + 1] << 8 | data[i]));
         sent = (f & 0x8000) != 0;               /* FSK TX finished */
     }
-    delay_ms(100);
+    fsk_sent_at = millis();
+    delay_ms(fsk_roll_tx ? 20 : 100);           /* voice follows the rolling burst */
     fsk_regs(0, fsk_rx_len);
     bk4819_write(0x40, r40);
     bk4819_write(0x2B, r2b);
     return sent;
+}
+
+int bk4819_fsk_send_roll(const uint8_t *data, int len, int narrow, int modem)
+{
+    uint8_t m = fsk_modem;
+    fsk_modem = (uint8_t)modem;                 /* receivers listen on the message modem */
+    fsk_roll_tx = 1;
+    int sent = bk4819_fsk_send(data, len, narrow);
+    fsk_roll_tx = 0;
+    fsk_modem = m;
+    return sent;
+}
+
+void bk4819_fsk_voice(void)
+{
+    fsk_off();
+    bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) | 1u << 2));   /* microphone on */
+}
+
+uint32_t bk4819_fsk_sent_ms(void)
+{
+    return fsk_sent_at;
+}
+
+int bk4819_fsk_roll_rx(void)
+{
+    return fsk_roll_rx && fsk_modem <= BK_FSK_450;   /* on a message modem; APRS / pager keep theirs */
 }
 
 uint16_t bk4819_fsk_word(void)

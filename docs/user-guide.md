@@ -78,12 +78,30 @@ The marks on a slot show its set-up:
 - `X`: transmit-off;
 - `N` / `W` / `AM`: bandwidth;
 - `H` / `L`: power;
-- `T` or `D`: a CTCSS or DCS tone.
+- `T` or `D`: a CTCSS or DCS tone;
+- `S` / `R`: a fixed or rolling voice scrambler.
 
 While transmitting, the slot shows the transmit frequency.
 
 **Tone squelch:** a channel with a receive tone stays silent until that tone is heard. Scan and dual
 watch stop on any carrier, but move on after half a second if it doesn't carry the channel's tone.
+
+### Scrambler
+
+A channel's scramble setting (set in Talkpod Manager) is one of these:
+- **2600–3500 Hz:** the voice is turned upside down around that frequency. These are the UV-K5's
+  scrambler types 1–10, so a UV-K5 set to the same type hears you clearly. It is weak: words can
+  still be made out by ear.
+- **Rolling:** the same inversion, but its frequency keeps gliding between 2600 and 3500 Hz, along a
+  path worked out from the **Scramble key** (menu). That is much harder to follow by ear.
+  - At PTT the radio sends a short data burst (a chirp, about 0.2 s) and then your voice. Start
+    talking after a moment: the first ~0.4 s after PTT isn't sent.
+  - Only radios running this firmware, with the same key, can follow it. They must have heard the
+    burst, so a radio that tunes in mid-transmission hears garble until the next one.
+  - PTT is refused ("Set Scramble key") until a key is set.
+  - A rolling channel listens for the burst instead of text messages.
+
+Both are privacy against casual listening, not security.
 
 ## Menu
 
@@ -110,6 +128,7 @@ leaves. Settings are saved 3 s after the last change and survive power-off.
 | Pager RIC | the pager address the Pager screen sends to (0–2097151) |
 | Pager speed | 512, 1200, 2400 bit/s |
 | Pager invert | send the pager FSK inverted (in case a receiver expects the other polarity) |
+| Scramble key | the key Rolling channels use (up to 14 characters, the same on every radio) |
 | Key beep | on / off |
 | Voice | on / off (power-on sound, channel/frequency mode, high/low) |
 | Scan channels | starts the channel scan |
@@ -146,7 +165,7 @@ selected slot's frequency.
 - Encrypted UV-K5 messages show as "(encrypted)".
 
 The receiver listens for messages on every screen except APRS and Pager, which use the modem for
-their own formats.
+their own formats, and on every channel except Rolling ones (they listen for the scrambler's burst).
 
 ## APRS (long 7)
 
