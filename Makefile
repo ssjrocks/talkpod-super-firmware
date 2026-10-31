@@ -37,6 +37,7 @@ C_SOURCES = \
   src/aprs.c \
   src/pocsag.c \
   src/roll.c \
+  src/stock.c \
   src/splash.c \
   drivers/adc.c \
   gfx/font_5x8.c \

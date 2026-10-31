@@ -28,6 +28,7 @@
 #include "aprs.h"
 #include "pocsag.h"
 #include "roll.h"
+#include "stock.h"
 #include "version.h"
 
 #define C_BG     RGB(8, 10, 18)
@@ -50,14 +51,14 @@ enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER };
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
 #define STEP_COUNT ((int)(sizeof steps / sizeof steps[0]))
-static const uint8_t backlight_s[] = {0, 10, 30, 60};       /* 0 = always on */
-static const char *const backlight_names[] = {"Always", "10 s", "30 s", "60 s"};
+static const uint8_t backlight_s[] = {0, 5, 10, 15, 20, 30, 60, 120, 180};  /* as stock; 0 = always on */
+static const char *const backlight_names[] = {"Always", "5 s", "10 s", "15 s", "20 s", "30 s", "1 min",
+                                              "2 min", "3 min"};
 
-static uint8_t screen, step = 4, backlight = 2, light_on = 1, locked, searching;
-static uint8_t sounds = 3;              /* 1: key beeps, 2: voice */
-static const uint16_t tot_s[] = {0, 30, 60, 120, 180, 300};     /* TX time-out; 0 = none */
-static const char *const tot_names[] = {"Off", "30 s", "60 s", "2 min", "3 min", "5 min"};
-static uint8_t tot = 4, tx_timed_out;
+static uint8_t screen, step = 4, light_on = 1, locked, searching;
+static const uint16_t tot_s[] = {0, 30, 60, 120, 240, 480};     /* TX time-out, as stock; 0 = none */
+static const char *const tot_names[] = {"Off", "30 s", "60 s", "2 min", "4 min", "8 min"};
+static uint8_t tx_timed_out;
 static uint32_t next_tx_draw;
 static uint32_t next_battery_warn;
 static uint32_t last_key, toast_until, next_meter, next_status;
@@ -103,7 +104,7 @@ static void snd(int id)
     if (tx_active())
         return;                         /* never a sound while transmitting */
     int keyish = id == SND_KEY || id == SND_CANCEL || id == SND_OPEN;
-    if (sounds & (keyish ? 1 : 2))
+    if (keyish ? stock.beep : stock.voice)
         voice_play(id);
 }
 
@@ -290,7 +291,7 @@ static void draw_hint(void)
         *p++ = ':';
         *p++ = (char)('0' + sec % 60 / 10);
         *p++ = (char)('0' + sec % 10);
-        put_str(put_str(p, "   time-out "), tot_names[tot]);
+        put_str(put_str(p, "   time-out "), tot_names[stock.tot]);
         gfx_text(4, HINT_Y + 1, &font_5x8, s, C_RED, C_BG);
         return;
     }
@@ -342,8 +343,8 @@ static void menu_value(int item, char *s)
     case M_BANDWIDTH:  put_str(s, sl->is_channel ? "channel" : sl->vfo_narrow ? "Narrow" : "Wide"); break;
     case M_MODULATION: put_str(s, sl->is_channel ? "channel" : sl->vfo_am ? "AM" : "FM"); break;
     case M_DUAL:       put_str(s, watch_dual() ? "On" : "Off"); break;
-    case M_BACKLIGHT:  put_str(s, backlight_names[backlight]); break;
-    case M_TOT:        put_str(s, tot_names[tot]); break;
+    case M_BACKLIGHT:  put_str(s, backlight_names[stock.abr]); break;
+    case M_TOT:        put_str(s, tot_names[stock.tot]); break;
     case M_MESSAGES:   if (msg_unread()) put_str(put_dec(s, (uint32_t)msg_unread()), " new"); break;
     case M_MSG_SPEED:  put_str(s, msg_speed_names[msg_modem()]); break;
     case M_MSG_RECEIPTS: put_str(s, msg_receipts() ? "On" : "Off"); break;
@@ -358,8 +359,8 @@ static void menu_value(int item, char *s)
     case M_PAGER_SPEED: put_dec(s, pager_bauds[pager_cfg.speed]); break;
     case M_PAGER_INVERT: put_str(s, pager_cfg.invert ? "On" : "Off"); break;
     case M_ROLL_KEY:   put_str(s, roll_cfg.key[0] ? "set" : "not set"); break;
-    case M_KEYBEEP:    put_str(s, sounds & 1 ? "On" : "Off"); break;
-    case M_VOICE:      put_str(s, sounds & 2 ? "On" : "Off"); break;
+    case M_KEYBEEP:    put_str(s, stock.beep ? "On" : "Off"); break;
+    case M_VOICE:      put_str(s, stock.voice ? "On" : "Off"); break;
     default: break;
     }
 }
@@ -1454,10 +1455,10 @@ static void menu_change(int dir)
         watch_set_dual(!watch_dual());
         break;
     case M_BACKLIGHT:
-        backlight = (uint8_t)((backlight + 4 + dir) % 4);
+        stock.abr = (uint8_t)((stock.abr + 9 + dir) % 9);
         break;
     case M_TOT:
-        tot = (uint8_t)((tot + 6 + dir) % 6);
+        stock.tot = (uint8_t)((stock.tot + 6 + dir) % 6);
         break;
     case M_MSG_SPEED:
         msg_set_modem((msg_modem() + 3 - dir) % 3);
@@ -1479,10 +1480,10 @@ static void menu_change(int dir)
         pocsag_save();
         break;
     case M_KEYBEEP:
-        sounds ^= 1;
+        stock.beep ^= 1;
         break;
     case M_VOICE:
-        sounds ^= 2;
+        stock.voice ^= 1;
         break;
     default:
         break;
@@ -1567,8 +1568,10 @@ typedef struct __attribute__((packed)) {
         uint16_t channel;
         uint32_t vfo;
     } slot[2];
-    uint8_t selected, dual, squelch, step, backlight, sounds, tot;
+    uint8_t selected, dual, squelch, step, backlight, sounds, tot;      /* dual, squelch, backlight, sounds
+                                           and tot moved to the stock record in 1.14: see stock_takes_over() */
     uint8_t msg;                        /* message speed (BK_FSK_*) | 4 no receipts */
+    uint8_t stock_done;                 /* 1 from 1.14 on */
 } saved_t;
 
 static saved_t saved;                   /* what flash holds now */
@@ -1585,13 +1588,24 @@ static void gather(saved_t *v)
         v->slot[i].vfo = s->vfo;
     }
     v->selected = (uint8_t)watch_selected();
-    v->dual = (uint8_t)watch_dual();
-    v->squelch = (uint8_t)radio_squelch();
     v->step = step;
-    v->backlight = backlight;
-    v->sounds = sounds;
-    v->tot = tot;
     v->msg = (uint8_t)(msg_modem() | (msg_receipts() ? 0 : 4));
+    v->stock_done = 1;
+}
+
+/* Before 1.14 these settings were in saved_t, with other lists of values. The first start of 1.14
+   keeps what the radio had, and the look of its main screen (stock's default shows channel names). */
+static void stock_takes_over(const saved_t *v)
+{
+    static const uint8_t abr[4] = {0, 2, 5, 6}, tot[6] = {0, 1, 2, 3, 4, 4};
+    if (v->squelch < 10)
+        stock.sql = v->squelch;
+    stock.tdr = v->dual != 0;
+    stock.abr = abr[v->backlight & 3];
+    stock.tot = tot[v->tot < 6 ? v->tot : 4];
+    stock.beep = v->sounds & 1;
+    stock.voice = (v->sounds >> 1) & 1;
+    stock.mdfa = stock.mdfb = 1;
 }
 
 static void apply(const saved_t *v)
@@ -1610,34 +1624,49 @@ static void apply(const saved_t *v)
         watch_update(i);
         s->low_power = (v->slot[i].flags >> 2) & 1;    /* ...and then the saved one wins */
     }
-    if (v->squelch < 10)
-        radio_set_squelch(v->squelch);
     if (v->step < STEP_COUNT)
         step = v->step;
-    if (v->backlight < 4)
-        backlight = v->backlight;
-    sounds = v->sounds & 3;
-    if (v->tot < 6)
-        tot = v->tot;
     msg_init((v->msg & 3) < 3 ? v->msg & 3 : BK_FSK_1200, !(v->msg & 4));
-    watch_set_dual(v->dual != 0);
     watch_select(v->selected & 1);
+}
+
+/* values this firmware can't show (the PC can write anything) go back to stock's defaults */
+static void stock_check(void)
+{
+    if (stock.abr > 8) stock.abr = 3;
+    if (stock.tot > 5) stock.tot = 0;
+    if (stock.sql > 9) stock.sql = 3;
+    stock.beep &= 1;
+    stock.voice &= 1;
 }
 
 /* from flash: at power-on, and after the PC wrote them (Talkpod Manager edits them) */
 static void load_settings(void)
 {
     saved_t v;
+    int found;
+    stock_load();
     aprs_init();
     pocsag_init();
     pocsag_apply();
     roll_init();
     gather(&v);                         /* defaults for anything an older record lacks */
-    if (settings_load(SET_MAIN, &v, sizeof v)) {
+    v.stock_done = 0;
+    found = settings_load(SET_MAIN, &v, sizeof v);
+    if (found) {
         apply(&v);
         debug_puts("settings loaded\r\n");
     }
+    if (found && !v.stock_done)
+        stock_takes_over(&v);
+    stock_check();
+    radio_set_squelch(stock.sql);
+    watch_set_dual(stock.tdr);
     gather(&saved);
+    if (found && !v.stock_done) {
+        settings_save(SET_MAIN, &saved, sizeof saved);
+        stock_save();
+    }
 }
 
 /* saved 3 s after the last change, never mid-scan or mid-search */
@@ -1650,6 +1679,10 @@ static void save_if_changed(uint32_t now)
     if (searching || scan_mode() != SCAN_OFF || entry_len || now - last_key < 3000)
         return;
     gather(&v);
+    stock.sql = (uint8_t)radio_squelch();
+    stock.tdr = (uint8_t)watch_dual();
+    if (!stock_save())
+        debug_puts("settings: stock save failed\r\n");
     if (memcmp(&v, &saved, sizeof v) == 0)
         return;
     if (settings_save(SET_MAIN, &v, sizeof v))
@@ -1879,7 +1912,7 @@ void ui_tick(void)
             messages(now);
     }
     if (tx_active()) {
-        if (tot_s[tot] && tx_seconds() >= tot_s[tot]) {
+        if (tot_s[stock.tot] && tx_seconds() >= tot_s[stock.tot]) {
             tx_stop();
             tx_timed_out = 1;           /* until PTT is released */
             debug_puts("TX time-out\r\n");
@@ -1966,7 +1999,7 @@ void ui_tick(void)
                 draw_hint();
         }
     }
-    if (backlight_s[backlight] && light_on && !radio_open() &&
-        now - last_key > (uint32_t)backlight_s[backlight] * 1000)
+    if (backlight_s[stock.abr] && light_on && !radio_open() &&
+        now - last_key > (uint32_t)backlight_s[stock.abr] * 1000)
         apply_backlight(0);
 }

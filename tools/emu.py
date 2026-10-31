@@ -15,7 +15,9 @@ squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. --fsk-rx MS:H
 FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO), and an FSK send
 (REG_59 bit 11) reports its FIFO almost empty every 50 ms and finishes when REG_5D bytes would
 have taken at REG_72's bit rate. --pins PC15,PA13 logs those outputs among the
-BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). Time is
+BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). --serial-in
+MS:HEX delivers bytes to the firmware's serial receive buffer from that time on (about 57600 baud),
+and --serial-out FILE saves all it sends, raw. Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -52,6 +54,16 @@ def symbols(elf):
     return out
 
 
+def sized_symbol(elf, name, size):
+    """The address of the symbol of that name and size (static names can repeat)."""
+    out = subprocess.run(["arm-none-eabi-nm", "-S", elf], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 4 and parts[3] == name and int(parts[1], 16) == size:
+            return int(parts[0], 16)
+    return None
+
+
 def write_png(path, pixels, w, h, scale):
     rows = []
     for y in range(h * scale):
@@ -85,13 +97,20 @@ def main():
     ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
     ap.add_argument("--fsk-rx", action="append", default=[],
                     help="MS:HEX an FSK packet arrives (sync, a few FIFO words, then complete)")
+    ap.add_argument("--serial-in", action="append", default=[], help="MS:HEX bytes to receive")
+    ap.add_argument("--serial-out", help="save what the firmware sends, raw")
     ap.add_argument("--hwver", default="02", help="board tag at 0x08000300 ('' for none)")
     ap.add_argument("--pins", default="", help="log changes of these outputs with --bk, e.g. PC15,PB0,PA13")
     args = ap.parse_args()
 
     binf = args.elf.rsplit(".", 1)[0] + ".bin"
     image = open(binf, "rb").read()
-    ticks_addr = symbols(args.elf)["ticks"]
+    syms = symbols(args.elf)
+    ticks_addr = syms["ticks"]
+    rx_at = sized_symbol(args.elf, "rx_buf", 256)
+    rx_due = sorted((int(i.split(":")[0]), bytes.fromhex(i.split(":")[1])) for i in args.serial_in)
+    rx_now = bytearray()
+    serial_raw = bytearray()
     script = []
     for item in filter(None, args.keys.split(",")):
         start, key, dur = item.split(":")
@@ -144,6 +163,14 @@ def main():
             st["ms"] += 1
             t = struct.unpack("<I", uc.mem_read(ticks_addr, 4))[0]
             uc.mem_write(ticks_addr, struct.pack("<I", (t + 1) & 0xFFFFFFFF))
+            while rx_due and rx_due[0][0] <= st["ms"]:
+                rx_now.extend(rx_due.pop(0)[1])
+            if rx_now:                                 # what the USART interrupt does, 5 bytes a ms
+                head = uc.mem_read(syms["rx_head"], 1)[0]
+                for _ in range(min(5, len(rx_now))):
+                    uc.mem_write(rx_at + head, bytes([rx_now.pop(0)]))
+                    head = (head + 1) & 0xFF
+                uc.mem_write(syms["rx_head"], bytes([head]))
         if st["ms"] >= args.ms:
             uc.emu_stop()
 
@@ -343,6 +370,7 @@ def main():
             fl["rx"] = flash_byte(value & 0xFF)
         elif addr == USART0 + 0x04:
             serial.append(value & 0xFF)
+            serial_raw.append(value & 0xFF)
             if value & 0xFF == 0x0A:
                 log.append((st["ms"], serial.decode("latin-1").rstrip()))
                 serial.clear()
@@ -381,6 +409,8 @@ def main():
         print(f"!! CPU error {e} at {uc.reg_read(UC_ARM_REG_PC):#x}")
     if serial:
         log.append((st["ms"], serial.decode("latin-1")))
+    if args.serial_out:
+        open(args.serial_out, "wb").write(serial_raw)
     if args.bk:
         for ms, kind, reg, val, *rest in bklog:
             if kind == "P":

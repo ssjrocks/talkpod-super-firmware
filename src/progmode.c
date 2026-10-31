@@ -9,16 +9,19 @@
  *   PC -> "UPDATE"                 radio -> 0x06, then reset: the bootloader listens for an INTO_BOOT
  *                                  frame at every start, so talkpod-firmware can flash with no buttons.
  *
- * 'R' / 'W' address the external flash directly, 0 .. FLASH_WINDOW_END, as stock does: channels at
- * 0x0000, VFO data 0x8000, settings 0x9000, DTMF 0xA000, ANI codes and names 0xB000 (the layout of
- * CHIRP's mml_jc8810 driver). Writes collect in a 4 KB sector buffer; the sector is erased and
- * programmed once, when a write moves to another sector, on 'E', or when the PC goes quiet.
+ * 'R' / 'W' address the external flash, 0 .. FLASH_WINDOW_END, as stock does: channels at 0x0000,
+ * VFO data 0x8000, settings 0x9000, DTMF 0xA000, ANI codes and names 0xB000 (the layout of CHIRP's
+ * mml_jc8810 driver), with one exception, also as stock: the 64 bytes at 0x8000 and at 0x9000 aren't
+ * flash. They show the newest record of a wear-levelling log, and writing them adds a record
+ * (src/stock.c). Other writes collect in a 4 KB sector buffer; the sector is erased and programmed
+ * once, when a write moves to another sector, on 'E', or when the PC goes quiet.
  */
 #include <stdint.h>
 #include <string.h>
 #include "debug.h"
 #include "progmode.h"
 #include "spiflash.h"
+#include "stock.h"
 #include "system.h"
 
 static const char MAGIC[] = "PROGRAMJC37U";
@@ -57,10 +60,21 @@ static int flush(void)
     return ok;
 }
 
+static int in_block(uint32_t base, uint32_t addr, uint32_t len)
+{
+    return addr < base + STOCK_BLOCK && addr + len > base;
+}
+
 static int window_write(uint32_t addr, const uint8_t *data, uint32_t len)
 {
     if (addr >= FLASH_WINDOW_END || len > FLASH_WINDOW_END - addr)
         return 0;
+    if (in_block(STOCK_VFO, addr, len) || in_block(STOCK_SET, addr, len)) {
+        if ((addr != STOCK_VFO && addr != STOCK_SET) || len != STOCK_BLOCK || !flush())
+            return 0;
+        changed = 1;
+        return stock_block_write(addr, data);
+    }
     while (len) {
         uint32_t s = addr & ~(FLASH_SECTOR - 1), off = addr - s;
         uint32_t n = FLASH_SECTOR - off < len ? FLASH_SECTOR - off : len;
@@ -92,6 +106,14 @@ static void window_read(uint32_t addr, uint8_t *out, uint32_t len)
         for (uint32_t i = 0; i < len; i++)
             if (((addr + i) & ~(FLASH_SECTOR - 1)) == sector_addr)
                 out[i] = sector[addr + i - sector_addr];
+    for (uint32_t base = STOCK_VFO; base <= STOCK_SET; base += STOCK_SET - STOCK_VFO)
+        if (in_block(base, addr, len)) {
+            uint8_t b[STOCK_BLOCK];
+            stock_block_read(base, b);
+            for (uint32_t i = 0; i < len; i++)
+                if (addr + i >= base && addr + i < base + STOCK_BLOCK)
+                    out[i] = b[addr + i - base];
+        }
 }
 
 static void run(void)
