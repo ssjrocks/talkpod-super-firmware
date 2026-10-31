@@ -85,6 +85,7 @@ Helpers:
 | `tools/splash.py` | boot splash: convert, upload, preview, remove ([serial-interface.md](serial-interface.md#boot-splash)) |
 | `tools/re/call_stock.py` | calls one function of a decrypted stock image in Unicorn and logs its BK4819 / GPIO activity ([stock-firmware.md](stock-firmware.md)) |
 | `tools/re/stockdis.py` | disassembly helper for the stock image |
+| `tools/screens.sh` | renders the README's picture, `docs/ui/screens.png`, from the build in the emulator |
 | `tools/mockup.py`, `tools/mkfont.py`, `tools/mkaafont.py` | UI mockups, bitmap and anti-aliased font tables |
 | `tools/encrypt.c` | `.kdhx` scrambling |
 

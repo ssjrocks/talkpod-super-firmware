@@ -10,7 +10,9 @@ radio research. It keeps the radio's everyday functions and adds:
 
 Version **1.17**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
-![UI mockups](docs/ui/mockups.png)
+![Screens from the firmware](docs/ui/screens.png)
+
+*Version 1.17 running in the emulator (`tools/screens.sh`).*
 
 > **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
 > 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
