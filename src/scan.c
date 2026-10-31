@@ -2,6 +2,7 @@
 #include "bk4819.h"
 #include "channels.h"
 #include "radio.h"
+#include "stock.h"
 #include "system.h"
 
 /* The BK4819 raises its squelch bit 45-65 ms after a retune onto a signal (measured with the stock
@@ -13,6 +14,7 @@
 #define DWELL_MS      80
 #define NOISE_MARGIN  6
 #define HANG_MS       2000      /* resume this long after the signal went away */
+#define HOLD_TO_MS    5000      /* scan resume TO: move on after this long, signal or not */
 
 static uint8_t mode, holding, am, narrow;
 static int8_t dir;
@@ -167,6 +169,13 @@ int scan_poll(void)
     }
     if (tone_wanted && !radio_open() && millis() - held_at >= TONE_WAIT_MS) {
         holding = 0;                        /* a carrier without this channel's tone */
+        retune();
+        return SCAN_EV_RESUME;
+    }
+    if (stock.screv == 2)                   /* SE: stay on what was found */
+        return SCAN_EV_NONE;
+    if (stock.screv == 0 && millis() - held_at >= HOLD_TO_MS) {
+        holding = 0;
         retune();
         return SCAN_EV_RESUME;
     }

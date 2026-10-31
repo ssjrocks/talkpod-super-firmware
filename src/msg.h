@@ -13,7 +13,8 @@ typedef struct {
 
 enum { MSG_IN = 1, MSG_OUT = 2, MSG_DELIVERED = 4, MSG_SECRET = 8 };
 enum { MSG_EV_NEW = 1, MSG_EV_DELIVERED = 2, MSG_EV_RECEIPT_DUE = 4, MSG_EV_RX = 8,
-       MSG_EV_ROLL = 16 };                      /* msg_poll(); MSG_EV_ROLL: msg_roll_burst() */
+       MSG_EV_ROLL = 16, MSG_EV_TAIL = 32 };    /* msg_poll(); MSG_EV_ROLL: msg_roll_burst();
+                                                   MSG_EV_TAIL: the sender's squelch tail */
 
 void msg_init(int modem, int receipts);         /* BK_FSK_1200 / 700 / 450 */
 void msg_set_modem(int modem);

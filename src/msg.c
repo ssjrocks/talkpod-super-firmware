@@ -175,6 +175,8 @@ int msg_poll(void)
     if (modem == BK_FSK_OFF)
         return 0;
     uint16_t f = bk4819_irq();
+    if (f & 0x0400)                             /* REG_02: CTCSS / DCS tail found */
+        ev |= MSG_EV_TAIL;
     if (f & 0x0002) {                           /* sync word: a packet starts */
         receiving = 1;
         rx_n = 0;

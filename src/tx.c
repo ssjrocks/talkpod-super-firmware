@@ -11,16 +11,23 @@
 #include "board.h"
 #include "radio.h"
 #include "spiflash.h"
+#include "stock.h"
 #include "system.h"
 
 static uint8_t bias_high[8], bias_low[8];
 static uint8_t active;
+static uint8_t tail_dcs;
 static uint32_t started, tx_freq;
+#define TAIL_MS 300                             /* stock counts 0x28 ticks of its timer task */
 
 void tx_init(void)
 {
     spiflash_read(0xF000, bias_high, sizeof bias_high);
     spiflash_read(0xF080, bias_low, sizeof bias_low);
+    uint8_t cal[3];
+    spiflash_read(0xF210, cal, sizeof cal);
+    if (cal[0] != 0xFF)
+        bk4819_cal(cal[0], cal[1], cal[2]);
 }
 
 int tx_allowed(uint32_t f)
@@ -70,10 +77,44 @@ int tx_start(uint32_t f, int narrow, int low_power, int tone, uint16_t tone_valu
     board_rf_path(f, RF_TX);
     bk4819_tx(f, narrow, tx_power_reg(f, low_power), tone, tone_value, scramble);
     board_led(1, 0);
+    tail_dcs = tone == BK_TONE_DCS || tone == BK_TONE_DCS_INV;
     tx_freq = f;
     started = millis();
     active = 1;
     return 1;
+}
+
+/* stock 0x800c494: Roger, then the squelch tail; 0x800b274: Roger is 1000 and 850 Hz for 80 ms each,
+   or a data packet */
+void tx_end(void)
+{
+    if (!active)
+        return;
+    if (stock.roger == 1) {
+        bk4819_tone_tx(1);
+        bk4819_tone_hz(1000);
+        delay_ms(80);
+        bk4819_tone_hz(850);
+        delay_ms(80);
+        bk4819_tone_tx(0);
+    } else if (stock.roger == 2) {
+        bk4819_roger_data();
+    }
+    if (stock.ste) {
+        bk4819_tail(tail_dcs, stock.tailphase & 3);
+        delay_ms(TAIL_MS);
+    }
+    tx_stop();
+}
+
+void tx_tone_burst(int on)
+{
+    static const uint16_t hz[4] = {1000, 1450, 1750, 2100};
+    if (!active)
+        return;
+    bk4819_tone_tx(on);
+    if (on)
+        bk4819_tone_hz(hz[stock.tone & 3]);
 }
 
 void tx_stop(void)

@@ -8,6 +8,7 @@
  * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
  * or switch the modulation.
  */
+#include <stddef.h>
 #include <string.h>
 #include "ui.h"
 #include "adc.h"
@@ -230,6 +231,15 @@ static void draw_slot(int i)
         name = "";
     }
     int tx = sel && tx_active();
+    int shows = s->is_channel && !tx ? (i ? stock.mdfb : stock.mdfa) : 1;   /* 0 name, 1 frequency, 2 number */
+    const char *big_name = 0;
+    char top[10];
+    if (shows == 0 && name[0]) {            /* the name goes big, the frequency takes its place */
+        big_name = name;
+        split_freq(f, big, small);
+        put_str(put_str(top, big), small);
+        name = top;
+    }
     if (tx)
         put_str(chip, "TX");
     uint16_t chip_bg = tx ? C_RED : rx ? C_GREEN : sel ? C_CYAN : C_PANEL2;
@@ -261,6 +271,11 @@ static void draw_slot(int i)
 
     if (sel && entry_len) {
         draw_entry(y, bg);
+    } else if (big_name) {
+        gfx_text(6, y + 21, &font_7x13b, big_name, sel ? C_AMBER : C_DIM, bg);
+    } else if (shows == 2) {                /* the channel number instead of the frequency */
+        put_dec(big, s->channel);
+        gfx_aa_text(6, y + 17, &font_digits21, big, sel ? C_AMBER : C_DIM, bg);
     } else {
         split_freq(f, big, small);
         uint16_t c = sel ? C_AMBER : C_DIM;
@@ -321,14 +336,87 @@ static void draw_main(void)
 
 /* ---- menu ---------------------------------------------------------------------------------- */
 
+/* stock's settings with a plain list of values: stock_items[], from M_STOCK on */
+typedef struct {
+    const char *name;
+    uint8_t off, count;
+    const char *const *opt;
+    const uint8_t *vals;                /* stored values, when they aren't 0, 1, 2... */
+} stock_item_t;
+
+#define OFFS(field) ((uint8_t)offsetof(stock_t, field))
+static const char *const off_on[] = {"Off", "On"};
+static const char *const screv_names[] = {"Time", "Carrier", "Stop"};
+static const char *const mdf_names[] = {"Name", "Frequency", "Channel"};
+static const char *const autolk_names[] = {"Off", "5 s", "10 s", "15 s"};
+static const char *const dualtx_names[] = {"Selected", "A", "B"};
+static const char *const rp_names[] = {"Off", "100 ms", "200 ms", "300 ms", "400 ms", "500 ms", "600 ms",
+                                       "700 ms", "800 ms", "900 ms", "1 s"};
+static const char *const roger_names[] = {"Off", "Beep", "Tone1200"};
+static const char *const ponmsg_names[] = {"Logo", "Voltage"};
+static const char *const tone_names[] = {"1000 Hz", "1450 Hz", "1750 Hz", "2100 Hz"};
+static const char *const quit_names[] = {"5 s", "10 s", "15 s", "20 s", "25 s", "30 s", "35 s", "40 s",
+                                         "45 s", "50 s", "60 s"};
+static const uint8_t quit_s[] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
+enum { FN_PTT_B = 0x01, FN_SOS = 0x03, FN_MONITOR = 0x05, FN_FM = 0x07, FN_LIGHT = 0x08, FN_TXP = 0x0A,
+       FN_NOAA = 0x0C, FN_SCAN = 0x1C, FN_SEARCH = 0x1D, FN_REMOTE = 0x23, FN_DTMF = 0x2A, FN_REVERSE = 0x2D,
+       FN_OFF = 0xFF };
+static const uint8_t fn_vals[] = {FN_OFF, FN_FM, FN_TXP, FN_SCAN, FN_SEARCH, FN_LIGHT, FN_NOAA, FN_MONITOR,
+                                  FN_PTT_B, FN_SOS, FN_DTMF, FN_REVERSE, FN_REMOTE};
+static const char *const fn_names[] = {"Off", "FM radio", "TX power", "Scan", "Search", "Light", "NOAA",
+                                       "Monitor", "PTT B", "SOS", "DTMF", "Reverse", "Remote"};
+#define FN_ITEM(name, field) {name, OFFS(field), 13, fn_names, fn_vals}
+static const stock_item_t stock_items[] = {
+    {"Scan resume", OFFS(screv), 3, screv_names, 0},
+    {"Slot A shows", OFFS(mdfa), 3, mdf_names, 0},
+    {"Slot B shows", OFFS(mdfb), 3, mdf_names, 0},
+    {"Auto lock", OFFS(autolk), 4, autolk_names, 0},
+    {"TX slot", OFFS(dualtx), 3, dualtx_names, 0},
+    {"Roger", OFFS(roger), 3, roger_names, 0},
+    {"Tail cut", OFFS(ste), 2, off_on, 0},
+    {"Rpt tail cut", OFFS(rpste), 11, rp_names, 0},
+    {"Rpt tail wait", OFFS(rptrl), 11, rp_names, 0},
+    {"Tone burst", OFFS(tone), 4, tone_names, 0},
+    {"Power-on", OFFS(ponmsg), 2, ponmsg_names, 0},
+    {"Menu exit", OFFS(menuquit), 11, quit_names, 0},
+    FN_ITEM("Side 2", skey2_sp),
+    FN_ITEM("Side 2 long", skey2_lp),
+    FN_ITEM("Side 1", skey3_sp),
+    FN_ITEM("Top key", topkey_sp),
+};
+#define STOCK_ITEMS 16
+
 enum { M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
        M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
-       M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN, M_ABOUT, M_COUNT };
-static const char *const menu_names[M_COUNT] = {
+       M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
+       M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS, M_COUNT };
+static const char *const menu_names[M_STOCK] = {
     "Messages", "APRS", "Pager", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
     "Backlight", "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon",
-    "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels", "About",
+    "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
 };
+
+static const char *menu_name(int i)
+{
+    return i < M_STOCK ? menu_names[i] : i < M_ABOUT ? stock_items[i - M_STOCK].name : "About";
+}
+
+static int stock_index(const stock_item_t *it)
+{
+    uint8_t v = ((const uint8_t *)&stock)[it->off];
+    if (!it->vals)
+        return v < it->count ? v : 0;
+    for (int i = 0; i < it->count; i++)
+        if (it->vals[i] == v)
+            return i;
+    return 0;
+}
+
+static void stock_change(const stock_item_t *it, int dir)
+{
+    int i = (stock_index(it) + it->count + dir) % it->count;
+    ((uint8_t *)&stock)[it->off] = it->vals ? it->vals[i] : (uint8_t)i;
+}
 static const char *const msg_speed_names[] = {"1200", "700", "450"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
 static uint8_t menu_pos, menu_top, editing;
@@ -361,7 +449,10 @@ static void menu_value(int item, char *s)
     case M_ROLL_KEY:   put_str(s, roll_cfg.key[0] ? "set" : "not set"); break;
     case M_KEYBEEP:    put_str(s, stock.beep ? "On" : "Off"); break;
     case M_VOICE:      put_str(s, stock.voice ? "On" : "Off"); break;
-    default: break;
+    default:
+        if (item >= M_STOCK && item < M_ABOUT)
+            put_str(s, stock_items[item - M_STOCK].opt[stock_index(&stock_items[item - M_STOCK])]);
+        break;
     }
 }
 
@@ -376,7 +467,7 @@ static void draw_menu_row(int i)
         gfx_rrect(2, y - 1, 124, 13, bg);
     else
         lcd_fill(2, y - 1, 124, 13, bg);
-    gfx_text(6, y + 1, &font_6x10, menu_names[i], C_TEXT, bg);
+    gfx_text(6, y + 1, &font_6x10, menu_name(i), C_TEXT, bg);
     menu_value(i, v);
     gfx_text(122 - gfx_text_width(&font_6x10, v), y + 1, &font_6x10, v,
              sel && editing ? C_AMBER : C_DIM, bg);
@@ -996,7 +1087,12 @@ static int digit_of(int key)
     }
 }
 
+static uint8_t side_short(int key);
+static int side_key(const key_event_t *ev);
 static uint8_t ptt_paused;              /* PTT took the receiver (not when it was refused) */
+static int8_t ptt_back = -1;            /* the slot to go back to: PTT B or Dual TX */
+static uint32_t tail_until;             /* HOLD_TAIL until then; 0: until the carrier goes */
+static uint8_t tail_held;
 
 static void ptt_refused(const char *why)
 {
@@ -1007,6 +1103,10 @@ static void ptt_refused(const char *why)
 
 static void ptt_down(void)
 {
+    if (ptt_back < 0 && watch_dual() && stock.dualtx && stock.dualtx - 1 != watch_selected()) {
+        ptt_back = (int8_t)watch_selected();    /* Dual TX: this slot transmits */
+        watch_select(stock.dualtx - 1);
+    }
     int sel = watch_selected();
     slot_t *s = watch_slot(sel);
     entry_len = 0;
@@ -1050,10 +1150,18 @@ static void ptt_down(void)
 static void ptt_up(void)
 {
     if (tx_active()) {
-        tx_stop();
+        tx_end();
         debug_puts("TX off\r\n");
+        if (stock.rpste || stock.rptrl) {       /* the repeater's tail isn't heard */
+            radio_audio_hold(HOLD_TAIL, 1);
+            tail_until = millis() + (stock.rpste + stock.rptrl) * 100u;
+        }
     }
     tx_timed_out = 0;
+    if (ptt_back >= 0) {
+        watch_select(ptt_back);
+        ptt_back = -1;
+    }
     if (ptt_paused) {
         ptt_paused = 0;
         watch_pause(0);
@@ -1073,16 +1181,20 @@ static void key_main(const key_event_t *ev)
             ptt_up();
         return;
     }
-    if (tx_active() || tx_timed_out)
-        return;                             /* other keys wait until PTT is released */
-
-    if (ev->key == KEY_SIDE1) {             /* monitor while held */
-        if (ev->type == KEV_PRESS || ev->type == KEV_RELEASE) {
-            radio_set_monitor(ev->type == KEV_PRESS);
-            draw_main();
+    if (tx_active() && (ev->key == KEY_SIDE1 || ev->key == KEY_SIDE2 || ev->key == KEY_TOP)) {
+        if (side_short(ev->key) == FN_MONITOR) {        /* stock: the tone burst */
+            if (ev->type == KEV_PRESS || ev->type == KEV_RELEASE)
+                tx_tone_burst(ev->type == KEV_PRESS);
+        } else if (side_short(ev->key) == FN_PTT_B && ev->type == KEV_RELEASE) {
+            ptt_up();
         }
         return;
     }
+    if (tx_active() || tx_timed_out)
+        return;                             /* other keys wait until PTT is released */
+
+    if (side_key(ev))
+        return;
     if (ev->type == KEV_LONG) {
         key_long[ev->key] = 1;
         if (!busy || ev->key == KEY_6)
@@ -1170,16 +1282,91 @@ static void key_main(const key_event_t *ev)
         snd(SND_CANCEL);
         draw_main();
         break;
-    case KEY_SIDE2:
+    default:
+        break;
+    }
+}
+
+/* What a side key does (stock's PF2 = Side 2, PF3 = Side 1, Top key). press: 1 going down, 0 coming
+   up, which only the keys held down care about. */
+static void side_function(uint8_t fn, int press)
+{
+    int other = watch_selected() ^ 1;
+    slot_t *s = watch_slot(watch_selected());
+    switch (fn) {
+    case FN_MONITOR:
+        radio_set_monitor(press);
+        draw_main();
+        return;
+    case FN_PTT_B:
+        if (press) {
+            ptt_back = (int8_t)watch_selected();
+            watch_select(other);
+            ptt_down();
+        } else {
+            ptt_up();
+        }
+        return;
+    default:
+        break;
+    }
+    if (!press)
+        return;
+    switch (fn) {
+    case FN_OFF:
+        return;
+    case FN_TXP:
+        long_press(KEY_1);
+        break;
+    case FN_SEARCH:
+        long_press(KEY_4);
+        break;
+    case FN_SCAN:
         if (scan_mode() != SCAN_OFF)
             stop_activity();
         else
             start_scan();
-        draw_main();
+        break;
+    case FN_REVERSE:
+        s->reverse ^= 1;
+        watch_update(watch_selected());
+        show_toast(s->reverse ? "Reverse on" : "Reverse off");
         break;
     default:
+        show_toast("Not available yet");
         break;
     }
+    draw_main();
+}
+
+/* the function of a side key, short press */
+static uint8_t side_short(int key)
+{
+    return key == KEY_SIDE2 ? stock.skey2_sp : key == KEY_SIDE1 ? stock.skey3_sp : stock.topkey_sp;
+}
+
+/* Hold functions act at once. The rest of a key with a long function wait for the release. */
+static int side_key(const key_event_t *ev)
+{
+    if (ev->key != KEY_SIDE1 && ev->key != KEY_SIDE2 && ev->key != KEY_TOP)
+        return 0;
+    uint8_t fn = side_short(ev->key);
+    int held = fn == FN_MONITOR || fn == FN_PTT_B;
+    int has_long = ev->key == KEY_SIDE2 && stock.skey2_lp != FN_OFF;
+    if (ev->type == KEV_PRESS) {
+        key_long[ev->key] = 0;
+        if (held || !has_long)
+            side_function(fn, 1);
+    } else if (ev->type == KEV_LONG && has_long && !held) {
+        key_long[ev->key] = 1;
+        side_function(stock.skey2_lp, 1);
+    } else if (ev->type == KEV_RELEASE) {
+        if (held)
+            side_function(fn, 0);
+        else if (has_long && !key_long[ev->key])
+            side_function(fn, 1);
+    }
+    return 1;
 }
 
 static void send_message(void)
@@ -1486,6 +1673,8 @@ static void menu_change(int dir)
         stock.voice ^= 1;
         break;
     default:
+        if (menu_pos >= M_STOCK && menu_pos < M_ABOUT)
+            stock_change(&stock_items[menu_pos - M_STOCK], dir);
         break;
     }
 }
@@ -1638,6 +1827,15 @@ static void stock_check(void)
     if (stock.sql > 9) stock.sql = 3;
     stock.beep &= 1;
     stock.voice &= 1;
+    if (stock.autolk > 3) stock.autolk = 0;
+    if (stock.menuquit > 10) stock.menuquit = 1;
+    if (stock.screv > 2) stock.screv = 1;
+    if (stock.mdfa > 2) stock.mdfa = 1;
+    if (stock.mdfb > 2) stock.mdfb = 1;
+    if (stock.dualtx > 2) stock.dualtx = 0;
+    if (stock.roger > 2) stock.roger = 0;
+    if (stock.rpste > 10) stock.rpste = 0;
+    if (stock.rptrl > 10) stock.rptrl = 0;
 }
 
 /* from flash: at power-on, and after the PC wrote them (Talkpod Manager edits them) */
@@ -1700,6 +1898,14 @@ void ui_init(void)
     load_settings();
     last_key = millis();
     apply_backlight(1);
+    if (stock.ponmsg == 1) {
+        char s[16], *p = put_str(s, "Battery ");
+        int dv = battery_decivolts();
+        p = put_dec(p, (uint32_t)dv / 10);
+        *p++ = '.';
+        put_str(put_dec(p, (uint32_t)dv % 10), " V");
+        show_toast(s);
+    }
     draw_main();
     snd(SND_POWER_ON);
 }
@@ -1732,9 +1938,9 @@ void ui_key(const key_event_t *ev)
             key_long[ev->key] = 1;          /* and must not type a digit on release */
         return;
     }
-    if (ev->type == KEV_PRESS && ev->key != KEY_PTT && ev->key != KEY_SIDE1 && !locked)
+    if (ev->type == KEV_PRESS && ev->key != KEY_PTT && !locked)
         snd(SND_KEY);
-    if (locked && !(ev->key == KEY_FM && ev->type == KEV_LONG) && ev->key != KEY_SIDE1) {
+    if (locked && !(ev->key == KEY_FM && ev->type == KEV_LONG) && side_short(ev->key) != FN_MONITOR) {
         if (ev->type == KEV_PRESS && screen == SCR_MAIN) {
             show_toast("locked: hold FM");
             draw_hint();
@@ -1771,6 +1977,10 @@ static void messages(uint32_t now)
             show_toast(r > 0 ? "Rolling scramble" : "Scramble key differs");
         if (r && screen == SCR_MAIN)
             draw_hint();
+    }
+    if (e & MSG_EV_TAIL && stock.ste) {         /* the sender's tail: mute before the squelch closes */
+        radio_audio_hold(HOLD_TAIL, 1);
+        tail_held = 1;
     }
     if (e & MSG_EV_RECEIPT_DUE && !searching) {
         int scanning = scan_mode() != SCAN_OFF;
@@ -1998,6 +2208,23 @@ void ui_tick(void)
             if (screen == SCR_MAIN)
                 draw_hint();
         }
+    }
+    if (tail_held && !radio_busy()) {
+        tail_held = 0;
+        radio_audio_hold(HOLD_TAIL, 0);
+    }
+    if (tail_until && (int32_t)(now - tail_until) >= 0) {
+        tail_until = 0;
+        radio_audio_hold(HOLD_TAIL, 0);
+    }
+    if (stock.autolk && !locked && screen == SCR_MAIN && now - last_key > stock.autolk * 5000u) {
+        locked = 1;
+        draw_status();
+    }
+    if (screen == SCR_MENU && !tx_active() && now - last_key > quit_s[stock.menuquit] * 1000u) {
+        editing = 0;
+        screen = SCR_MAIN;
+        draw_main();
     }
     if (backlight_s[stock.abr] && light_on && !radio_open() &&
         now - last_key > (uint32_t)backlight_s[stock.abr] * 1000)

@@ -21,10 +21,11 @@ static void resolve(slot_t *s)
 {
     channel_t ch;
     if (s->is_channel && channel_read(s->channel, &ch)) {
-        if (s->freq != ch.rx)
+        uint32_t rx_f = s->reverse && ch.tx ? ch.tx : ch.rx, tx_f = s->reverse && ch.tx ? ch.rx : ch.tx;
+        if (s->freq != rx_f)
             s->low_power = ch.low_power;        /* a new channel brings its own power */
-        s->freq = ch.rx;
-        s->tx = ch.tx;
+        s->freq = rx_f;
+        s->tx = tx_f;
         s->rx_tone = ch.rx_tone;
         s->tx_tone = ch.tx_tone;
         s->bcl = ch.bcl;

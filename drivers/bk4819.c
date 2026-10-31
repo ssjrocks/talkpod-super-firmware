@@ -112,6 +112,16 @@ static uint32_t fsk_sent_at;                    /* millis() when the last send f
 static uint16_t pocsag_baud = 1200;
 static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
+static uint8_t gain_mic = 0x1A, gain_ctcss, gain_dcs;
+
+/* The radio's calibration (flash 0xF210, in stock's RAM at 0x200000EE): the microphone gain and the
+   levels of transmitted tones. Stock's REG_51 is its value below | this level. */
+void bk4819_cal(uint8_t mic, uint8_t ctcss, uint8_t dcs)
+{
+    gain_mic = mic;
+    gain_ctcss = ctcss & 0x7F;
+    gain_dcs = dcs & 0x7F;
+}
 
 /* CTCSS / DCS, as stock (0x80014d4, 0x8001334, 0x800291c, measured with tools/re/call_stock.py):
    CTCSS: REG_51 0x9000, REG_07 = Hz x 20.64888 (CTC1); then REG_07 0x21CD and REG_52 0x0292 set the
@@ -134,7 +144,7 @@ static void tone_regs(int type, uint16_t value, int tx)
 {
     if (type == BK_TONE_DCS || type == BK_TONE_DCS_INV) {
         uint32_t cw = golay(value);
-        bk4819_write(0x51, tx && type == BK_TONE_DCS_INV ? 0xA000 : 0x8000);
+        bk4819_write(0x51, (uint16_t)((tx && type == BK_TONE_DCS_INV ? 0xA000 : 0x8000) | gain_dcs));
         bk4819_write(0x07, 0x0AD7);
         bk4819_write(0x08, (uint16_t)(cw & 0x0FFF));
         bk4819_write(0x08, (uint16_t)(0x8000 | (cw >> 12 & 0x0FFF)));
@@ -142,7 +152,7 @@ static void tone_regs(int type, uint16_t value, int tx)
     }
     if (tx && type == BK_TONE_NONE)
         return;
-    bk4819_write(0x51, 0x9000);
+    bk4819_write(0x51, (uint16_t)(0x9000 | gain_ctcss));
     bk4819_write(0x07, type == BK_TONE_CTCSS ? (uint16_t)(((uint32_t)value * 206488U + 50000U) / 100000U)
                                              : 0x0471);
     bk4819_write(0x07, 0x21CD);
@@ -232,7 +242,7 @@ void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_
     bk4819_write(0x52, 0x0000);
     tone_regs(tone, tone_value, 1);
     scramble_regs(scramble);
-    bk4819_write(0x7D, (uint16_t)((bk4819_read(0x7D) & 0xFFE0) | 0x1A));   /* mic gain, as stock */
+    bk4819_write(0x7D, (uint16_t)((bk4819_read(0x7D) & 0xFFE0) | (gain_mic & 0x1F)));   /* mic gain */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xC1FE);                  /* TX: PLL, PA gain, mic ADC, TX DSP */
     bk4819_write(0x36, reg36);                   /* PA bias << 8 | gain */
@@ -419,9 +429,60 @@ void bk4819_tone_tx(int on)
     } else {
         bk4819_write(0x70, 0x0000);
         bk4819_write(0x2B, r2b);
-        if (fsk_modem != BK_FSK_OFF)
+        bk4819_write(0x30, 0xC1FE);             /* the microphone again */
+        if (fsk_modem != BK_FSK_OFF && !fsk_tx_off)
             fsk_regs(0, fsk_rx_len);
     }
+}
+
+/* The squelch tail, while still transmitting (stock 0x8008848(1)): 55 Hz, or on a DCS channel the
+   turn-off code, for a moment before the carrier goes; a receiver then mutes before its squelch
+   closes on noise. phase: stock's TAIL PHASE, 0 none. */
+void bk4819_tail(int dcs, int phase)
+{
+    uint16_t r52 = bk4819_read(0x52) & 0x1FFF;
+    if (dcs) {
+        bk4819_write(0x07, 0x2AD7);
+        bk4819_write(0x52, (uint16_t)(r52 | 0x8000));
+        return;
+    }
+    if (phase)
+        r52 = (uint16_t)(r52 | (phase & 3) << 12 | 0x8000);
+    else
+        bk4819_write(0x07, 0x0471);
+    bk4819_write(0x51, (uint16_t)(0x9000 | gain_ctcss));
+    bk4819_write(0x52, r52);
+}
+
+/* Roger TONE1200 (stock 0x80094aa, 0x80096c8): a fixed 28-byte packet, sent while transmitting */
+void bk4819_roger_data(void)
+{
+    static const uint16_t words[14] = {0xB604, 0x37D9, 0x8388, 0xE28E, 0x66EC, 0xAEE4, 0xC3DB, 0x158F,
+                                       0x19A7, 0x499F, 0x82D4, 0xFAE5, 0x1A96, 0xC9C0};
+    bk4819_write(0x58, 0x37C3);
+    bk4819_write(0x72, 0x3065);
+    bk4819_write(0x70, 0x00B4);
+    bk4819_write(0x5D, 0x1B00);
+    bk4819_write(0x59, 0x6028);
+    bk4819_write(0x59, 0x3028);
+    bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) | 1u << 2));
+    bk4819_write(0x3F, 0x8000);
+    bk4819_write(0x59, 0xA028);
+    bk4819_write(0x59, 0x2028);
+    bk4819_write(0x5A, 0xFC73);
+    bk4819_write(0x5B, 0x419A);
+    bk4819_write(0x5C, 0xA730);
+    for (int i = 0; i < 14; i++)
+        bk4819_write(0x5F, words[i]);
+    delay_ms(20);
+    bk4819_write(0x59, 0x2828);
+    for (int t = 200; t && !(bk4819_read(0x0C) & 1); t--)
+        delay_ms(5);
+    bk4819_write(0x02, 0x0000);
+    bk4819_write(0x59, 0x2028);
+    bk4819_write(0x3F, IRQ_ENABLE);
+    fsk_off();
+    bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) & ~(1u << 2)));
 }
 
 void bk4819_tone_hz(uint16_t hz)

@@ -17,7 +17,7 @@ int  radio_open(void);                      /* audio on: a signal with the right
 int  radio_busy(void);                      /* a signal is there, whatever its tone */
 int  radio_rssi_dbm(void);
 void radio_mute(void);                      /* audio off until the next radio_tune() */
-enum { HOLD_VOICE = 1, HOLD_DATA = 2 };
+enum { HOLD_VOICE = 1, HOLD_DATA = 2, HOLD_TAIL = 4 };
 void radio_audio_hold(int who, int on);     /* keep received audio muted: a sound plays, data arrives */
 int  radio_narrow(void);
 void radio_retune(void);                    /* receive again on the tuned frequency (after a TX) */

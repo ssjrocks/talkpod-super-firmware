@@ -13,6 +13,7 @@ enum { BK_SCRAMBLE_ROLL = 11 };                 /* scramble: 0 off, 1-10 the UV-
 void     bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, int tone, uint16_t tone_value,
                    int scramble);               /* stock receive start */
 void     bk4819_scramble_hz(uint16_t hz);       /* the inversion frequency, now; 0 scrambler off */
+void     bk4819_cal(uint8_t mic, uint8_t ctcss, uint8_t dcs);   /* the radio's calibration (flash 0xF210) */
 void     bk4819_off(void);                      /* REG_30 = 0: receiver and transmitter off */
 void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value,
                    int scramble);               /* transmit on */
@@ -46,5 +47,7 @@ void     bk4819_fsk_tx_invert(int on);          /* send the bits inverted */
 void     bk4819_pocsag_baud(uint16_t baud);     /* BK_FSK_POCSAG: 512, 1200 or 2400 */     /* REG_58 for BK_FSK_AFSK, to try demodulator modes */
 void     bk4819_tone_tx(int on);                /* while transmitting: tone 1 instead of the mic */
 void     bk4819_tone_hz(uint16_t hz);
+void     bk4819_tail(int dcs, int phase);       /* while transmitting: the squelch tail */
+void     bk4819_roger_data(void);               /* while transmitting: roger TONE1200 */
 
 #endif

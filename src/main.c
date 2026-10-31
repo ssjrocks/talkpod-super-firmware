@@ -9,6 +9,7 @@
 #include "adc.h"
 #include "radio.h"
 #include "roll.h"
+#include "stock.h"
 #include "shell.h"
 #include "ui.h"
 #include "voice.h"
@@ -37,7 +38,9 @@ int main(void)
     bk4819_init();
     board_rf_path(0, RF_OFF);       /* as stock before its first RX: REG_33 = 0 */
     spiflash_init();
-    splash_play();
+    stock_load();
+    if (stock.ponmsg == 0)                  /* stock: logo or voltage */
+        splash_play();
     adc_init();
     radio_init();
     tx_init();
