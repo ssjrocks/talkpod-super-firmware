@@ -106,6 +106,7 @@ void bk4819_init(void)
 }
 
 static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert, fsk_tx_invert;
+static uint8_t fsk_tx_off;                      /* bk4819_tx() switched the modem off */
 static uint16_t pocsag_baud = 1200;
 static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
@@ -174,8 +175,12 @@ void bk4819_rx(uint32_t freq_10hz, int narrow, uint16_t reg78, uint16_t reg4f, i
     bk4819_write(0x28, 0x6B38);                  /* RX audio expander, as stock 0x8004980 */
     bk4819_write(0x30, 0x0200);
     bk4819_write(0x30, 0xBFF1);                  /* RX: VCO cal, RX link, AF DAC, PLL, RX DSP */
-    if (fsk_modem != BK_FSK_OFF)
+    if (fsk_modem != BK_FSK_OFF && fsk_tx_off) {
+        fsk_tx_off = 0;
+        bk4819_fsk_setup(fsk_modem, fsk_rx_len);   /* back on after bk4819_tx() switched it off */
+    } else if (fsk_modem != BK_FSK_OFF) {
         fsk_arm();                               /* a fresh FIFO on every frequency */
+    }
 }
 
 void bk4819_off(void)
@@ -184,9 +189,18 @@ void bk4819_off(void)
 }
 
 /* Stock transmit start (0x8009b70, channel without tones), with the PA power (REG_36) written last:
-   the caller has already switched the RF path to transmit. */
+   the caller has already switched the RF path to transmit. The FSK modem (left on for receiving
+   messages) is switched off first: while it is on, the microphone doesn't reach the modulator and
+   the radio sends a silent carrier. The UV-K5 messenger does the same (MSG_EnableRX(false) on TX).
+   bk4819_fsk_send() sets it up again for a data packet; bk4819_rx() restores it for receiving. */
 void bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value, int scramble)
 {
+    if (fsk_modem != BK_FSK_OFF) {
+        bk4819_write(0x59, 0x0000);
+        bk4819_write(0x70, 0x0000);
+        bk4819_write(0x58, 0x0000);
+        fsk_tx_off = 1;
+    }
     bk4819_write(0x37, 0x1D0F);
     bk4819_write(0x30, 0x0000);
     bk4819_write(0x38, (uint16_t)freq_10hz);

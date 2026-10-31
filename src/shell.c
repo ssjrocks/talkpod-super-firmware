@@ -19,7 +19,7 @@
  *   v LO HI ST N  survey LO..HI Hz in ST Hz steps: per step, 80 ms after the retune, print kHz,
  *                 squelch bit, noise (REG_65), RSSI dBm, glitch (REG_63); any byte stops it
  *   i             one line about this firmware for tools such as Talkpod Manager:
- *                 "fw=TSF ver=1.10 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
+ *                 "fw=TSF ver=1.11 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
  *   G             play the boot splash now (a preview after uploading one), then "ok" or
  *                 "no splash"; the screen returns to what it showed
  * See docs/serial-interface.md.
