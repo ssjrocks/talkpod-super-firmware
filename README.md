@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.0**. Builds to about 43 KB of the MCU's 63 KB application flash.
+Version **1.11**. Builds to about 45 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -42,7 +42,7 @@ Version **1.0**. Builds to about 43 KB of the MCU's 63 KB application flash.
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working (VFO scan is in the code but not offered) |
-| FM transmit with the radio's PA calibration, high / low power, time-out timer | working (into a dummy load) |
+| FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
 | CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | emulator-tested; on-air test pending |
@@ -71,7 +71,7 @@ The flasher is `talkpod-firmware` from
    Firmware (it downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.0.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.11.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.

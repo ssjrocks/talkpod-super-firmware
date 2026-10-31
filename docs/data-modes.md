@@ -47,6 +47,12 @@ packets up to 255 bytes work whatever the FIFO size (36 words are known to fit).
 - The RX FIFO is cleared and re-armed after every retune (`bk4819_rx()`), so dual watch and data
   reception get along.
 
+**Voice transmit:** the modem must be off (REG_58 = 0, REG_70 = 0). While it's on, the microphone
+doesn't reach the modulator and the radio sends a silent carrier. Firmware 1.0–1.10 did that
+(found on air, fixed in 1.11). `bk4819_tx()` switches the modem off, as the UV-K5 messenger does on
+every transmit. The first `bk4819_rx()` afterwards sets it up again. A data send configures the
+modem itself after `bk4819_tx()`.
+
 ## UV-K5 messages
 
 `src/msg.c`. This is the format of the messenger in

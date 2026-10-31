@@ -95,7 +95,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 | Search, channel scan, dual watch | ✓ | |
 | Settings across power-off | ✓ | |
 | Sounds | ✓ | |
-| FM transmit, power levels, blocked ranges | ✓ into a dummy load; the ranges in the emulator | |
+| FM transmit, power levels, blocked ranges | ✓ voice heard on another radio (1.11); the ranges in the emulator | |
 | TX time-out | | ✓ |
 | AM receive | built, not yet checked with an AM signal | |
 | UV-K5 messages | modem registers read back | ✓ send, receive, receipts |
