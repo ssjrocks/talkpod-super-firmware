@@ -32,8 +32,10 @@ hears a signal and 1 s after.
 | A/B | select the other slot | |
 | UP / DOWN | next / previous channel, or VFO up / down one step (repeats when held) | |
 | BACK | cancel typing, stop a scan or search | |
-| Side key 1 | monitor (squelch open) while held | |
-| Side key 2 | start / stop the channel scan | |
+| Side key 1 | what the menu's **Side 1** says (stock's PF3) | |
+| Side key 2 | what **Side 2** says (stock's PF2); the channel scan by default | **Side 2 long** |
+| Top key | what **Top key** says | |
+| 0–9 while transmitting | DTMF while held | |
 | PTT | transmit, from any screen, also with the keys locked or the display off | |
 
 MENU and FM act when released, so their long presses don't also open the menu or switch FM/AM.
@@ -59,8 +61,13 @@ static. Each level above 1 needs a stronger signal. Level 0 is always open.
 
 Hold PTT. You get:
 - the red LED, a red TX chip on the slot, and the TX power on the meter;
-- a timer on the hint line, and the time-out ("TX timeout" in the menu, 3 min by default). At the
-  time-out the transmitter stops until PTT is released.
+- a timer on the hint line, and the time-out ("TX timeout" in the menu). At the time-out the
+  transmitter stops until PTT is released.
+
+When PTT is released, the radio can send **Roger** (a beep or a short data burst), then the **Tail
+cut**: 55 Hz for a moment, so receivers that know it mute before the squelch closes on noise. A side
+key set to **Monitor** sends the **Tone burst** while transmitting. With **PTT-ID** on a channel,
+its DTMF code goes out at key-up, key-down or both.
 
 Transmit happens on the **selected** slot's channel as programmed:
 - its transmit frequency (a repeater shift or split);
@@ -106,8 +113,10 @@ Both are privacy against casual listening, not security.
 ## Menu
 
 UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), BACK
-leaves. Settings are saved 3 s after the last change and survive power-off. Talkpod Manager (0.3 or
-later) shows them on its Settings page: Read brings in what the radio has, Write sends your changes.
+leaves. Settings are saved 3 s after the last change and survive power-off. They're stock's own settings where
+stock has the same one. Talkpod Manager shows them on its Settings page: Read brings in what the radio
+has, Write sends your changes. Side key functions FM radio, Light, NOAA, DTMF and Remote aren't there
+yet and say so.
 
 | Item | Values |
 |---|---|
@@ -119,8 +128,8 @@ later) shows them on its Settings page: Read brings in what the radio has, Write
 | Bandwidth | wide / narrow (VFO slot; a channel has its own) |
 | Modulation | FM / AM (VFO slot) |
 | Dual watch | on / off |
-| Backlight | always on, 10 s, 30 s, 60 s |
-| TX timeout | off, 30 s, 60 s, 2, 3, 5 min |
+| Backlight | always on, 5, 10, 15, 20, 30 s, 1, 2, 3 min |
+| TX timeout | off, 30 s, 60 s, 2, 4, 8 min |
 | Msg speed | 1200 (default), 700, 450 bit/s for text messages; both radios must match |
 | Msg receipts | on: answer received messages with a delivery receipt |
 | APRS call | your callsign with SSID, e.g. VK2ABC-7 (an editor opens) |
@@ -133,6 +142,23 @@ later) shows them on its Settings page: Read brings in what the radio has, Write
 | Key beep | on / off |
 | Voice | on / off (power-on sound, channel/frequency mode, high/low) |
 | Scan channels | starts the channel scan |
+| Battery save | off, Normal, Super, Deep: 3 minutes after the last activity the receiver sleeps and listens in turns |
+| VOX | off, 1–10 (the mic level that keys the transmitter; higher needs more) |
+| VOX delay | how long it keeps transmitting after you stop, 0.5–2 s |
+| PTT-ID delay | wait before the PTT-ID at key-up |
+| Alarm | what a side key set to SOS does: Local (speaker), Tone (on the air), Code (on the air, with the ANI code) |
+| Alarm sound | the Local alarm's sound with Tone / Code too, when not transmitting |
+| Scan resume | Time (moves on after 5 s), Carrier (2 s after the signal ends), Stop (stays) |
+| Slot A shows, Slot B shows | a channel's name, frequency or number, large |
+| Auto lock | locks the keys after 5, 10, 15 s |
+| TX slot | with dual watch: Selected, or always slot A or B |
+| Roger | off, Beep, Tone1200 |
+| Tail cut | sends the squelch tail, and mutes on one received |
+| Rpt tail cut, Rpt tail wait | keep the speaker muted this long after transmitting, for a repeater's tail |
+| Tone burst | 1000, 1450, 1750, 2100 Hz |
+| Power-on | Logo (the boot splash) or Voltage |
+| Menu exit | leaves the menu after this long without a key |
+| Side 2, Side 2 long, Side 1, Top key | FM radio, TX power, Scan, Search, Light, NOAA, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
 | About | firmware version, board, battery, number of channels |
 
 ## Typing text

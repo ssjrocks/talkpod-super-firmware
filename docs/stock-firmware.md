@@ -92,6 +92,60 @@ Other: RSSI read REG_67 (0x80086b0), status REG_0C (0x80086c2 ...), frequency sc
 (0x8009434), CTCSS/DCS scan results REG_68/69/6A (0x800955c), squelch REG_78/4F (0x80098f4), TX
 power REG_36 (0x8009aa4), FSK modem setup REG_58/59/5A-5F/70/72/3F (0x80094aa, 0x80096c8, 0x8009512).
 
+## Settings and VFO logs
+
+The settings and the VFOs are not at fixed addresses. Each is a wear-levelling log in one 4 KB sector
+(0x8005188 / 0x8005320 settings, 0x8005270 / 0x800546c VFOs):
+
+| | Settings 0x9000 | VFOs 0x8000 |
+|---|---|---|
+| Bitmap | 6 bytes | 8 bytes |
+| Records from +0x10 | 0x60 bytes (0x31 used: copied to RAM 0x2000073C and 0x2000075C) | 0x42 bytes (two VFOs of 0x20) |
+| Check | CRC-16/XMODEM of the first 0x5E, little-endian at +0x5E | of the first 0x40, at +0x40 |
+| Read up to slot | 0x29 | 0x3C |
+
+The first set bit of the bitmap (bit 0 of byte 0 first, 0x8004DA6) is the newest slot. Saving writes
+the next slot, then clears the old slot's bit. From the last slot, it erases the sector and writes
+slot 0. A bad record means defaults (0x8009060).
+
+**Program mode doesn't show the log** (0x8007EB4, blocks of 0x40). `R` at exactly 0x9000 returns the
+settings from RAM and at 0x8000 the newest VFO record; `W` there stores a record the same way. Any
+other address is plain flash, and `W` at a sector start erases that sector first. So what CHIRP
+calls 0x9000 is the live record, not flash address 0x9000.
+
+The sector 0xE000 is a third log the same way: 0x20 bytes of bitmap, records of 0x10 from 0xE020
+(the current channels).
+
+## Calibration at 0xF210
+
+| Byte | Use |
+|---|---|
+| 0xF210 | mic gain, REG_7D low bits (0x1A on the radio measured) |
+| 0xF211 | CTCSS level, REG_51 low 7 bits: 0x9000 | level (0x41) |
+| 0xF212 | DCS level, REG_51 low 7 bits: 0x8000 | level (0x30) |
+
+Running stock's tone functions on zeroed RAM logs REG_51 without these. Load them first.
+
+## What the settings do
+
+Measured from the code; field names as CHIRP's.
+
+- **roger** (0x800B274, at PTT release): 1 = 1000 Hz then 850 Hz, 80 ms each. 2 = a fixed 28-byte
+  packet from 0x800E350 through the FSK modem (REG_58 0x37C3, sync FC 73 41 9A).
+- **ste** (0x8008994): after Roger, 55 Hz on the transmitter (REG_07 0x0471, REG_51 0x9000 | CTCSS
+  level) for 0x28 ticks; on a DCS channel REG_07 0x2AD7 and REG_52 bit 15. **tailphase** instead sets
+  REG_52 <13:12> and bit 15.
+- **Side keys:** PF2 is the key on PB14, the firmware's Side 2. Codes 0x50 / 0x51 PF2 short / long,
+  0x52 PF3, 0x54 top key (0x8002588, table 0x800E437). 0xFF = default: PF2 FM radio, long Scan.
+- **VOX** (0x800CBD8): ADC channel 0, >> 4, above table 0x800E492 {127, 21, 31 ... 111} by level, 8 less
+  while transmitting; it holds for voxd + 5 ticks of 100 ms.
+- **save** (0x8007D20): from 3 minutes after the last activity (counter 0x4650), listens and sleeps in
+  turns: ticks 3 / 5, 2 / 7, 1 / 9. Sleep is REG_30 0, REG_37 0x1D00.
+- **autolk**: value x 5 s. **tone**: 1000, 1450, 1750, 2100 Hz. **dualtx**: with TDR on, 1 / 2 make PTT
+  use slot A / B.
+- **DTMF** (table 0x800E78A, gains REG_70 0xC5C5): speeds at 0xA007 on, 0xA008 off (50, 100, 200, 300,
+  500 ms); PTT-ID groups from 0xA020, 16 bytes each; ANI codes from 0xB000, 3 bytes each.
+
 ## ENCRY (measured with tools/re/call_stock.py, 2026-10-31)
 
 ENCRY is **not voice privacy**. It is a private sub-audible code, a code squelch. Stock never
@@ -118,7 +172,8 @@ writes REG_31, so the BK4819's voice inversion scrambler is not used, and the au
 | Address | Contents |
 |---|---|
 | 0x0000-0x3FFF | 512 channels x 32 bytes (CHIRP mml_jc8810 layout: lbcd rx[4], tx[4] in 10 Hz units; flags byte 15: bit 6 narrow, bit 2 scan; name at 20, 12 chars) |
-| 0x9000 | settings; squelch level 0-9 in the low nibble of 0x9000 |
+| 0x8000 | VFO log (see "Settings and VFO logs") |
+| 0x9000 | settings log (see "Settings and VFO logs") |
 | 0xF000-0xF0B0 | per-radio tables loaded to RAM 0x20000014-0x20000094 (TX power, not decoded yet) |
 | 0xF0C0 / 0xF0D0 | squelch RSSI open / close per level 0-9 (raw: dBm = raw / 2 - 160) |
 | 0xF0E0 | squelch correction, 400 MHz up, per 10 MHz (index clamped at 12) |

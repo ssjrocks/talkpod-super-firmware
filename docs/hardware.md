@@ -246,6 +246,7 @@ anything else:
 |---|---|
 | 0x110000 | sound pack (`tools/soundpack.py`, replaces the stock prompts) |
 | 0x120000–0x19CFFF | boot splash, 500 KB (0x19D000–0x1DFFFF free) |
+| 0x8000, 0x9000 | stock's VFO and settings logs, which this firmware reads and writes in stock's format (1.14+) |
 | 0x4000 / 0x5000 / 0x6000 / 0x7000 | settings logs (1.13+): main, APRS, pager, scramble key (32-byte records). In the window, which stock leaves empty, so Talkpod Manager's Read / Write carry them |
 | 0x1E0000 / 0x1E1000 / 0x1E2000 / 0x1E3000 | where 1.0–1.12 kept them; 1.13 reads them once, while the window has none, and copies them over |
 

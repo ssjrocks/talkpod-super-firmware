@@ -69,6 +69,8 @@ Helpers:
 - `tools/pocsag_emu.py`: `rx RIC TEXT [numeric]` makes a capture; `tx LOG` decodes a sent page from
   the FIFO writes.
 - `tools/splash.py GIF --image IN OUT` puts a splash into a flash image.
+- `tools/stock_emu.py`: drives program mode through the emulator as CHIRP does, on a flash image, and
+  checks the result by stock's rules. `emu.py --serial-in` / `--serial-out` carry the bytes.
 - `tools/roll.py`: the rolling scrambler's reference path. `cfg` puts a key and rolling channels into
   a flash image, `burst` makes an `--fsk-rx` capture, and `check LOG KEY` compares the REG_71 writes of
   a run against the path.
@@ -119,8 +121,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 - **Scrambler:** works on air (1.11), but plain inversion leaves words partly understandable. It is
   the UV-K5's method (REG_31 bit 1, REG_71); stock has no voice scrambler.
 - **Still to come from stock:** ENCRY (a private code squelch, not voice privacy; see
-  stock-firmware.md), PTT-ID / DTMF, the stock menu settings (read from 0x9000,
-  where CHIRP and Talkpod Manager edit them), FM broadcast radio.
+  stock-firmware.md), FM broadcast radio, the side key functions Light, NOAA, DTMF and Remote.
 - **Channels:** not editable on the radio, and program mode has no channel read/write.
 - **On-air checks:** messages with a UV-K5; APRS and POCSAG with an SDR (multimon-ng, Direwolf) or a
   pager. That includes POCSAG polarity and bit order, AFSK and FSK deviation, and whether APRS

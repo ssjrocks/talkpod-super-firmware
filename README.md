@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.13**. Builds to about 47 KB of the MCU's 63 KB application flash.
+Version **1.14**. Builds to about 53 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -53,14 +53,14 @@ Version **1.13**. Builds to about 47 KB of the MCU's 63 KB application flash.
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
 | Animated boot splash, changeable over the serial cable | working |
 | Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working on the radio |
+| Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | emulator-tested; on-air test pending |
 | Ten short sounds (key beep, menu, high / low, power-on, low voltage...) | working (built from the radio's own voice prompts) |
 
 The firmware does **not** have yet:
 - stock's per-channel "ENCRY", which is a private code squelch, not encryption (see
-  docs/stock-firmware.md), and PTT-ID / DTMF signalling;
-- the stock menu settings (VOX, roger beep, tail elimination, tone burst, alarm, side-key functions and so
-  on); it keeps its own settings, set from its menu;
-- the stock FM broadcast receiver (BK1080);
+  docs/stock-firmware.md);
+- the side key functions FM radio (the BK1080 receiver), Light, NOAA, DTMF and Remote;
+- stock's DTMF side tone, language, and scanning for CTCSS / DCS tones;
 - channel editing on the radio (program channels with Talkpod Manager or CHIRP).
 
 ## Quick start

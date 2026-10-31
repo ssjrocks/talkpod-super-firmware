@@ -25,13 +25,18 @@ recognised anywhere in the stream.
 | `E` | leaves program mode |
 | `UPDATE` | 0x06, then a reset into the bootloader, ready for an INTO_BOOT frame |
 
-`R` and `W` (1.1 and later) address the external flash directly, from 0 to 0xB43F, as stock does:
+`R` and `W` (1.1 and later) address the external flash from 0 to 0xB43F, as stock does:
 - channels at 0x0000 (512 × 32 bytes);
 - this firmware's own settings at 0x4000–0x7FFF (1.13+; stock doesn't use this range);
-- VFO data at 0x8000;
-- settings at 0x9000;
+- VFO data at 0x8000 and settings at 0x9000: see below;
 - DTMF at 0xA000;
 - ANI codes and custom names at 0xB000.
+
+**0x8000 and 0x9000 aren't flash.** On stock those two 64-byte blocks show the newest record of a
+wear-levelling log, and writing them adds a record
+([stock-firmware.md](stock-firmware.md#settings-and-vfo-logs)). From 1.14 this firmware does the same
+(`src/stock.c`), and uses that record for its own settings. Before 1.14 it showed the raw logs there:
+images read then hold them, and Talkpod Manager repairs those images.
 
 That is the memory map of CHIRP's `mml_jc8810` driver, so CHIRP's A36plus driver reads and writes
 this firmware unchanged once it accepts the ident. Talkpod Manager does this, and its images move
@@ -176,7 +181,8 @@ screen).
 
 ## Other stored data
 
-**Settings** (`src/settings.c`): logs of 32-byte records, one 4 KB sector per area, in the
+**Settings** stock also has (squelch, backlight, side keys, Roger...) are in stock's own record, above.
+The rest, this firmware's own (`src/settings.c`), are logs of 32-byte records, one 4 KB sector per area, in the
 program-mode window from 1.13 so that Read / Write carry them: 0x4000 main, 0x5000 APRS, 0x6000 pager,
 0x7000 scramble key. (1.0–1.12 kept them at 0x1E0000–0x1E3FFF; 1.13 reads those once, while the
 window has none, and copies them in.) After the PC writes, the radio loads them again.
