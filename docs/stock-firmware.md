@@ -92,6 +92,27 @@ Other: RSSI read REG_67 (0x80086b0), status REG_0C (0x80086c2 ...), frequency sc
 (0x8009434), CTCSS/DCS scan results REG_68/69/6A (0x800955c), squelch REG_78/4F (0x80098f4), TX
 power REG_36 (0x8009aa4), FSK modem setup REG_58/59/5A-5F/70/72/3F (0x80094aa, 0x80096c8, 0x8009512).
 
+## ENCRY (measured with tools/re/call_stock.py, 2026-10-31)
+
+ENCRY is **not voice privacy**. It is a private sub-audible code, a code squelch. Stock never
+writes REG_31, so the BK4819's voice inversion scrambler is not used, and the audio goes out in the clear.
+
+- **Channel field:** byte 15 bits 5–4 (0 off, 1–3). The channel loader 0x8007da8 copies it to RAM
+  0x2000067c, beside narrow (0x2000067b), busy lockout and PTT-ID.
+- **Transmit:** PTT key-up 0x800bff8 passes it to 0x80088f0. That sends a 24-bit word at the DCS rate
+  in place of the channel's tone: REG_51 = 0x8080, REG_07 = 0x0AD7, REG_08 = low / 0x8000 | high half:
+
+  | ENCRY | REG_08 | Word |
+  |---|---|---|
+  | 1 | 0x09A4, 0x8513 | 0x5139A4 |
+  | 2 | 0x09D1, 0x8493 | 0x4939D1 |
+  | 3 | 0x09F0, 0x8323 | 0x3239F0 |
+
+  The low 12 bits are shaped like DCS (0x800 | octal 644, 721, 760), but the high bits are not the
+  Golay parity of those codes. No standard DCS decoder matches them.
+- **Receive:** 0x800861c opens the speaker only after the code was detected (0x8009b40) three times
+  in a row. A radio without the code stays quiet, but any radio with open squelch hears the voice.
+
 ## External flash (SPI0, W25Q16-compatible; this radio: Zbit ZB25VQ16, ID 5E 60 15)
 
 | Address | Contents |

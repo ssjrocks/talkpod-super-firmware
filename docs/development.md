@@ -108,9 +108,12 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 
 - **480 MHz spur:** the 48 MHz MCU clock's 10th harmonic. Switching to 108 MHz as stock does would
   move it, and give more headroom.
-- **On-air checks of the 1.1 channel features:** CTCSS / DCS tones and the scrambler are set exactly
-  as stock does, emulator-tested, but not yet heard by another radio.
-- **Still to come from stock:** encryption, PTT-ID / DTMF, the stock menu settings (read from 0x9000,
+- **On-air checks of the 1.1 channel features:** CTCSS / DCS tones are set exactly as stock does,
+  emulator-tested, but not yet heard by another radio.
+- **Scrambler:** works on air (1.11), but plain inversion leaves words partly understandable. It is
+  the UV-K5's method (REG_31 bit 1, REG_71); stock has no voice scrambler.
+- **Still to come from stock:** ENCRY (a private code squelch, not voice privacy; see
+  stock-firmware.md), PTT-ID / DTMF, the stock menu settings (read from 0x9000,
   where CHIRP and Talkpod Manager edit them), FM broadcast radio.
 - **Channels:** not editable on the radio, and program mode has no channel read/write.
 - **On-air checks:** messages with a UV-K5; APRS and POCSAG with an SDR (multimon-ng, Direwolf) or a
