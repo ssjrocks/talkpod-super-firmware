@@ -106,7 +106,8 @@ Both are privacy against casual listening, not security.
 ## Menu
 
 UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), BACK
-leaves. Settings are saved 3 s after the last change and survive power-off.
+leaves. Settings are saved 3 s after the last change and survive power-off. Talkpod Manager (0.3 or
+later) shows them on its Settings page: Read brings in what the radio has, Write sends your changes.
 
 | Item | Values |
 |---|---|

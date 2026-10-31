@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.12**. Builds to about 47 KB of the MCU's 63 KB application flash.
+Version **1.13**. Builds to about 47 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -52,7 +52,7 @@ Version **1.12**. Builds to about 47 KB of the MCU's 63 KB application flash.
 | APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
 | Animated boot splash, changeable over the serial cable | working |
-| Settings kept across power-off | working |
+| Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working; Talkpod Manager editing emulator-tested |
 | Ten short sounds (key beep, menu, high / low, power-on, low voltage...) | working (built from the radio's own voice prompts) |
 
 The firmware does **not** have yet:

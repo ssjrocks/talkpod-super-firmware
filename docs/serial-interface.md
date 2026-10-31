@@ -27,6 +27,7 @@ recognised anywhere in the stream.
 
 `R` and `W` (1.1 and later) address the external flash directly, from 0 to 0xB43F, as stock does:
 - channels at 0x0000 (512 × 32 bytes);
+- this firmware's own settings at 0x4000–0x7FFF (1.13+; stock doesn't use this range);
 - VFO data at 0x8000;
 - settings at 0x9000;
 - DTMF at 0xA000;
@@ -175,8 +176,12 @@ screen).
 
 ## Other stored data
 
-**Settings** (`src/settings.c`): logs of 32-byte records, one 4 KB sector per area: 0x1E0000 main,
-0x1E1000 APRS, 0x1E2000 pager, 0x1E3000 scramble key.
+**Settings** (`src/settings.c`): logs of 32-byte records, one 4 KB sector per area, in the
+program-mode window from 1.13 so that Read / Write carry them: 0x4000 main, 0x5000 APRS, 0x6000 pager,
+0x7000 scramble key. (1.0–1.12 kept them at 0x1E0000–0x1E3FFF; 1.13 reads those once, while the
+window has none, and copies them in.) After the PC writes, the radio loads them again.
+Talkpod Manager's `tsf_settings.py` reads and writes them; the payloads are the structs `saved_t`
+(`src/ui.c`), `aprs_cfg_t`, `pager_cfg_t` and `roll_cfg_t`.
 
 | Bytes | Field |
 |---|---|

@@ -5,6 +5,7 @@
 /* record: u16 magic, u8 length, u8 0, payload (zero-padded to 26 bytes), u16 CRC-16/XMODEM of the
    first 30 bytes. A record cut short by power loss fails the CRC and is skipped. */
 #define BASE(a)  (FLASH_SETTINGS + (uint32_t)(a) * FLASH_SECTOR)
+#define OLD(a)   (FLASH_SETTINGS_OLD + (uint32_t)(a) * FLASH_SECTOR)
 #define REC     32
 #define RECORDS (FLASH_SECTOR / REC)
 #define MAGIC   0xA36C
@@ -28,14 +29,12 @@ static int erased(const uint8_t *r)
     return 1;
 }
 
-int settings_load(int area, void *dst, uint32_t len)
+static int load(uint32_t base, void *dst, uint32_t len)
 {
     uint8_t r[REC];
     int found = 0;
-    if (len > SETTINGS_MAX)
-        return 0;
     for (uint32_t i = 0; i < RECORDS; i++) {
-        spiflash_read(BASE(area) + i * REC, r, REC);
+        spiflash_read(base + i * REC, r, REC);
         if (erased(r))
             break;
         /* a record from an older firmware is shorter: it fills the start, the rest keeps defaults */
@@ -46,6 +45,19 @@ int settings_load(int area, void *dst, uint32_t len)
         }
     }
     return found;
+}
+
+/* Firmware before 1.13 kept the logs at FLASH_SETTINGS_OLD. While the window has no record, the old
+   one counts, and is copied into the window once: the PC must read what the radio uses, or its next
+   Write would put defaults in their place. */
+int settings_load(int area, void *dst, uint32_t len)
+{
+    if (len > SETTINGS_MAX)
+        return 0;
+    int n = load(BASE(area), dst, len);
+    if (!n && (n = load(OLD(area), dst, len)) != 0)
+        settings_save(area, dst, (uint32_t)n);
+    return n;
 }
 
 int settings_save(int area, const void *src, uint32_t len)

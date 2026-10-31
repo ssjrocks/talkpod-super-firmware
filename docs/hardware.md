@@ -238,13 +238,16 @@ See [data-modes.md](data-modes.md#the-bk4819-fsk-modem). Interrupt flags are pol
 | 0x110000–0x191FFF | stock voice prompts (index at 0x110000, see below) |
 | 0x1F0000–0x1F1FFF | stock data (left alone) |
 
-This firmware writes **only 0x110000–0x1EFFFF**; `drivers/spiflash.c` refuses anything else:
+This firmware writes only its own region **0x110000–0x1EFFFF** and the stock programming window
+**0x0000–0xB43F** (the PC's Read / Write, and its own settings from 1.13); `drivers/spiflash.c` refuses
+anything else:
 
 | Address | This firmware |
 |---|---|
 | 0x110000 | sound pack (`tools/soundpack.py`, replaces the stock prompts) |
 | 0x120000–0x19CFFF | boot splash, 500 KB (0x19D000–0x1DFFFF free) |
-| 0x1E0000 / 0x1E1000 / 0x1E2000 | settings logs: main, APRS, pager (32-byte records) |
+| 0x4000 / 0x5000 / 0x6000 / 0x7000 | settings logs (1.13+): main, APRS, pager, scramble key (32-byte records). In the window, which stock leaves empty, so Talkpod Manager's Read / Write carry them |
+| 0x1E0000 / 0x1E1000 / 0x1E2000 / 0x1E3000 | where 1.0–1.12 kept them; 1.13 reads them once, while the window has none, and copies them over |
 
 **Channel record**, 32 bytes, the same as CHIRP's `mml_jc8810` driver:
 

@@ -1624,6 +1624,22 @@ static void apply(const saved_t *v)
     watch_select(v->selected & 1);
 }
 
+/* from flash: at power-on, and after the PC wrote them (Talkpod Manager edits them) */
+static void load_settings(void)
+{
+    saved_t v;
+    aprs_init();
+    pocsag_init();
+    pocsag_apply();
+    roll_init();
+    gather(&v);                         /* defaults for anything an older record lacks */
+    if (settings_load(SET_MAIN, &v, sizeof v)) {
+        apply(&v);
+        debug_puts("settings loaded\r\n");
+    }
+    gather(&saved);
+}
+
 /* saved 3 s after the last change, never mid-scan or mid-search */
 static void save_if_changed(uint32_t now)
 {
@@ -1644,20 +1660,11 @@ static void save_if_changed(uint32_t now)
 
 void ui_init(void)
 {
-    saved_t v;
     if (radio_squelch() == 0)
         radio_set_squelch(1);           /* 0 is always open, which leaves dual watch on slot A */
     watch_init();
     msg_init(BK_FSK_1200, 1);
-    aprs_init();
-    pocsag_init();
-    roll_init();
-    gather(&v);                         /* defaults for anything an older record lacks */
-    if (settings_load(SET_MAIN, &v, sizeof v)) {
-        apply(&v);
-        debug_puts("settings loaded\r\n");
-    }
-    gather(&saved);
+    load_settings();
     last_key = millis();
     apply_backlight(1);
     draw_main();
@@ -1841,8 +1848,13 @@ void ui_tick(void)
 
     if (reload && !tx_active()) {
         reload = 0;
+        load_settings();                /* also the slots' channels, as written */
         watch_update(watch_selected() ^ 1);
         watch_update(watch_selected());
+        if (data_mode == 1)             /* apply() set the modem up for messages */
+            aprs_listen(1);
+        else if (data_mode == 2)
+            pocsag_listen(1);
         redraw();
     }
 
