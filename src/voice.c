@@ -7,6 +7,9 @@
  * per second, decoded in the interrupt. A 1 KB ring buffer, refilled from flash by voice_poll() in
  * the main loop, covers 0.25 s of stalls. PA11 idles high (as the bootloader leaves it), so playback
  * ramps from 100 % duty to the middle and back to avoid a click.
+ *
+ * Spoken prompts play at twice the level of the recording: they peak at -3 to -4 dBFS, so this clips
+ * only their loudest 0.2-2.5 % of samples. The beeps peak near -17 dBFS and keep their level.
  */
 #include "voice.h"
 #include "board.h"
@@ -29,6 +32,8 @@
 #define MID     (PERIOD / 2)
 #define RAMP    160                     /* samples: 20 ms */
 #define BUF     1024             /* 250 ms of sound */
+#define FIRST_BEEP  SND_KEY             /* stock numbers: 78-148 spoken, 149 and up beeps */
+#define VOICE_GAIN  2
 
 /* pack: "SNDP", u16 count, u16 sample rate, then count x {u16 id, u16 0, u32 offset, u32 length} */
 #define MAGIC   0x50444E53U
@@ -51,6 +56,7 @@ static volatile uint32_t left;          /* bytes not yet decoded */
 static volatile int32_t pred;
 static volatile uint8_t idx;
 static volatile uint16_t ramp, last;
+static volatile uint8_t gain;
 static volatile uint32_t isr_count;
 static uint32_t src, src_left;          /* flash not yet buffered */
 static uint8_t timer_ready;
@@ -94,7 +100,10 @@ void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
         pred = code & 8 ? pred - diff : pred + diff;
         if (pred > 32767) pred = 32767;
         if (pred < -32768) pred = -32768;
-        out = (uint16_t)(MID + (pred * 61) / 4096);  /* +-32768 -> +-488 */
+        int32_t level = pred * gain;
+        if (level > 32767) level = 32767;
+        if (level < -32768) level = -32768;
+        out = (uint16_t)(MID + (level * 61) / 4096);  /* +-32768 -> +-488 */
         break;
     }
     case RAMP_OUT:
@@ -186,6 +195,7 @@ int voice_play(int id)
     pred = 0;
     idx = 0;
     ramp = 0;
+    gain = id < FIRST_BEEP ? VOICE_GAIN : 1;
     refill();
 
     radio_audio_hold(HOLD_VOICE, 1);

@@ -57,6 +57,7 @@ cycle stamps, `--pins` logs output changes among them. Also:
 - `--bkreg-at MS:REG=VAL`
 - `--fsk-rx MS:HEX`
 - `--flash-out FILE`
+- `--voice` (lists the sounds played with their PWM swing, by running the timer interrupt)
 - `--hwver 02`
 
 Time is simulated (about 48 MHz at two cycles per instruction), so timings are approximate.

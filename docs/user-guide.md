@@ -150,7 +150,7 @@ has, Write sends your changes. Side key functions DTMF and Remote aren't there a
 | Pager invert | send the pager FSK inverted (in case a receiver expects the other polarity) |
 | Scramble key | the key Rolling channels use (up to 14 characters, the same on every radio) |
 | Key beep | on / off |
-| Voice | on / off (power-on sound, channel/frequency mode, high/low) |
+| Voice | on / off (power-on sound, then the mode spoken after it; channel/frequency mode, high/low) |
 | Scan channels | starts the channel scan |
 | Battery save | off, Normal, Super, Deep: 3 minutes after the last activity the receiver sleeps and listens in turns |
 | VOX | off, 1–10 (the mic level that keys the transmitter; higher needs more) |

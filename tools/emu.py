@@ -17,7 +17,9 @@ FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO
 have taken at REG_72's bit rate. --pins PC15,PA13 logs those outputs among the
 BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). --serial-in
 MS:HEX delivers bytes to the firmware's serial receive buffer from that time on (about 57600 baud),
-and --serial-out FILE saves all it sends, raw. Time is
+and --serial-out FILE saves all it sends, raw. --voice lists each sound played with its PWM swing:
+TMR1's update interrupt runs from the entry of voice_poll(), where no registers need saving, at 8180 Hz
+of simulated time. Time is
 simulated: SysTick is faked by bumping `ticks` every INSN_PER_MS instructions (about 48 MHz at two
 cycles per instruction; instructions are counted per block, as block bytes / 2), so timings are
 only roughly real. Needs unicorn (tools/requirements-emu.txt).
@@ -30,7 +32,7 @@ import zlib
 
 from unicorn import (UC_ARCH_ARM, UC_HOOK_BLOCK, UC_HOOK_MEM_READ, UC_HOOK_MEM_UNMAPPED, UC_HOOK_MEM_WRITE,
                      UC_MODE_MCLASS, UC_MODE_THUMB, Uc, UcError)
-from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_SP, UC_CPU_ARM_CORTEX_M4
+from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_SP, UC_CPU_ARM_CORTEX_M4
 
 INSN_PER_MS = 24000
 X_OFFSET = 32                      # drivers/lcd.c
@@ -38,6 +40,9 @@ GPIOA, GPIOB, GPIOC, GPIOF = 0x48000000, 0x48000400, 0x48000800, 0x48001400
 SPI1 = 0x40003800
 SPI0 = 0x40013000
 USART0 = 0x40013800                # older layout on this MCU: STAT +0, DATA +4
+TMR1_CTRL1, TMR1_C4DT = 0x40012C00, 0x40012C40
+VOICE_INSNS = INSN_PER_MS * 1000 // 8180   # src/voice.c: one sample
+VOICE_RAMP = 160                   # its fade in and out, left out of the swing
 
 MATRIX = ["MENU", "UP", "DOWN", "BACK", "1", "2", "3", "A/B", "4", "5", "6", "0", "7", "8", "9", "FM"]
 ROW_PINS = [3, 4, 5, 6]
@@ -99,6 +104,7 @@ def main():
                     help="MS:HEX an FSK packet arrives (sync, a few FIFO words, then complete)")
     ap.add_argument("--serial-in", action="append", default=[], help="MS:HEX bytes to receive")
     ap.add_argument("--serial-out", help="save what the firmware sends, raw")
+    ap.add_argument("--voice", action="store_true", help="list the sounds played, with their PWM swing")
     ap.add_argument("--hwver", default="02", help="board tag at 0x08000300 ('' for none)")
     ap.add_argument("--pins", default="", help="log changes of these outputs with --bk, e.g. PC15,PB0,PA13")
     args = ap.parse_args()
@@ -157,8 +163,27 @@ def main():
     def pressed():
         return {k for a, b, k in script if a <= st["ms"] < b}
 
+    timer = {"next": 0, "lr": None}
+    sounds = []                             # (ms it started, PWM values)
+
+    def voice_interrupt(uc):
+        """At voice_poll()'s entry: 1 when the timer interrupt was entered instead (it returns here)."""
+        if uc.mem_read(TMR1_CTRL1, 1)[0] & 1 and st["n"] >= timer["next"]:
+            timer["next"] += VOICE_INSNS
+            if timer["lr"] is None:
+                timer["lr"] = uc.reg_read(UC_ARM_REG_LR)
+            uc.reg_write(UC_ARM_REG_LR, syms["voice_poll"] | 1)
+            uc.reg_write(UC_ARM_REG_PC, syms["TIMER0_BRK_UP_TRG_COM_IRQHandler"] | 1)
+            return 1
+        if timer["lr"] is not None:
+            uc.reg_write(UC_ARM_REG_LR, timer["lr"])
+            timer["lr"] = None
+        return 0
+
     def on_block(uc, addr, size, _):
         st["n"] += max(1, size // 2)
+        if args.voice and addr == syms["voice_poll"] & ~1 and voice_interrupt(uc):
+            return
         while st["n"] >= (st["ms"] + 1) * INSN_PER_MS:
             st["ms"] += 1
             t = struct.unpack("<I", uc.mem_read(ticks_addr, 4))[0]
@@ -358,6 +383,11 @@ def main():
                 bklog.append((st["ms"], "P", name, now))
 
     def on_write(uc, access, addr, size, value, _):
+        if addr == TMR1_CTRL1 and value & 1:
+            timer["next"] = st["n"]
+            sounds.append((st["ms"], []))
+        elif addr == TMR1_C4DT and sounds:
+            sounds[-1][1].append(value & 0xFFFF)
         if watched and addr & ~0x3FF in st["octl"]:
             before = dict(st["octl"])
             on_write_port(uc, access, addr, size, value, _)
@@ -422,6 +452,12 @@ def main():
         print(f"{ms:6d} ms  {line}")
     print(f"BK4819: {sum(1 for x in bklog if x[1] == 'W')} writes, {sum(1 for x in bklog if x[1] == 'R')} reads")
     print(f"ran ~{st['n']} instructions, {st['ms']} simulated ms")
+    if args.voice:
+        for ms, pwm in sounds:
+            body = pwm[VOICE_RAMP:-VOICE_RAMP] or [0]
+            mid = sum(body) / len(body)
+            rms = (sum((v - mid) ** 2 for v in body) / len(body)) ** 0.5
+            print(f"sound at {ms} ms: {len(pwm) / 8180:.2f} s, PWM {min(body)}..{max(body)}, rms {rms:.0f}")
     if args.png:
         visible = [gram[y * 162 + x + X_OFFSET] for y in range(128) for x in range(128)]
         write_png(args.png, visible, 128, 128, 3)

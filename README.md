@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.17**. Builds to about 57 KB of the MCU's 63 KB application flash.
+Version **1.18**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
 ![Screens from the firmware](docs/ui/screens.png)
 

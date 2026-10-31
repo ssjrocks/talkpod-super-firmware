@@ -62,6 +62,7 @@ static uint8_t screen, step = 4, light_on = 1, locked, searching;
 static const uint16_t tot_s[] = {0, 30, 60, 120, 240, 480};     /* TX time-out, as stock; 0 = none */
 static const char *const tot_names[] = {"Off", "30 s", "60 s", "2 min", "4 min", "8 min"};
 static uint8_t tx_timed_out;
+static uint8_t boot_prompt;             /* say the mode when the power-on sound ends */
 static uint32_t next_tx_draw;
 static uint32_t next_battery_warn;
 static uint32_t last_key, toast_until, next_meter, next_status;
@@ -109,6 +110,11 @@ static void snd(int id)
     int keyish = id == SND_KEY || id == SND_CANCEL || id == SND_OPEN;
     if (keyish ? stock.beep : stock.voice)
         voice_play(id);
+}
+
+static void snd_mode(void)                  /* says how the selected slot is working */
+{
+    snd(watch_slot(watch_selected())->is_channel ? SND_CHANNEL_MODE : SND_FREQUENCY_MODE);
 }
 
 static int rssi_level(void)                 /* 0-16 meter segments, -125..-45 dBm */
@@ -1328,7 +1334,7 @@ static void long_press(int key)
             s->vfo_narrow = s->narrow;
         }
         watch_update(sel);
-        snd(s->is_channel ? SND_CHANNEL_MODE : SND_FREQUENCY_MODE);
+        snd_mode();
         break;
     case KEY_FM:
         locked ^= 1;
@@ -2308,6 +2314,7 @@ void ui_init(void)
     }
     draw_main();
     snd(SND_POWER_ON);
+    boot_prompt = 1;
 }
 
 void ui_refresh(void)
@@ -2527,6 +2534,10 @@ void ui_tick(void)
     uint32_t now = millis();
     int ev = WATCH_EV_NONE;
 
+    if (boot_prompt && !voice_busy()) {         /* the power-on sound has ended */
+        boot_prompt = 0;
+        snd_mode();
+    }
     if (reload && !tx_active()) {
         reload = 0;
         load_settings();                /* also the slots' channels, as written */
