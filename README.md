@@ -10,10 +10,10 @@ radio research. It keeps the radio's everyday functions and adds:
 
 Version **1.18**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
-[![A tour of the firmware on a real radio](docs/media/tour.gif)](docs/media/tour.mp4)
+[![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
 *Filmed on a real radio running 1.17, sped up: boot splash, dual watch, the menu, the frequency scanner
-and a channel scan. The splash is any animation you send it; this one is the owner's. Click for the MP4.*
+and a channel scan. The splash is any animation you send it; this one is the owner's. Click to download a sharper MP4.*
 
 ![Screens from the firmware](docs/ui/screens.png)
 
