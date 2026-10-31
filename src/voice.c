@@ -9,7 +9,8 @@
  * ramps from 100 % duty to the middle and back to avoid a click.
  *
  * Spoken prompts play at twice the level of the recording: they peak at -3 to -4 dBFS, so this clips
- * only their loudest 0.2-2.5 % of samples. The beeps peak near -17 dBFS and keep their level.
+ * only their loudest 0.2-2.5 % of samples. The beeps peak near -17 dBFS: the power-on sound plays at
+ * three times its level, which doesn't clip, and the key beeps keep theirs.
  */
 #include "voice.h"
 #include "board.h"
@@ -34,6 +35,7 @@
 #define BUF     1024             /* 250 ms of sound */
 #define FIRST_BEEP  SND_KEY             /* stock numbers: 78-148 spoken, 149 and up beeps */
 #define VOICE_GAIN  2
+#define POWER_ON_GAIN 3
 
 /* pack: "SNDP", u16 count, u16 sample rate, then count x {u16 id, u16 0, u32 offset, u32 length} */
 #define MAGIC   0x50444E53U
@@ -195,7 +197,7 @@ int voice_play(int id)
     pred = 0;
     idx = 0;
     ramp = 0;
-    gain = id < FIRST_BEEP ? VOICE_GAIN : 1;
+    gain = id == SND_POWER_ON ? POWER_ON_GAIN : id < FIRST_BEEP ? VOICE_GAIN : 1;
     refill();
 
     radio_audio_hold(HOLD_VOICE, 1);
