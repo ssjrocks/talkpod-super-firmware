@@ -17,7 +17,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ![Screens from the firmware](docs/ui/screens.png)
 
-*Version 1.17 running in the emulator (`tools/screens.sh`).*
+*Version 1.18 running in the emulator (`tools/screens.sh`).*
 
 > **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
 > 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
