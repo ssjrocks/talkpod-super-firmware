@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-enum { BK_AF_MUTE, BK_AF_FM, BK_AF_AM };
+enum { BK_AF_MUTE, BK_AF_FM, BK_AF_AM, BK_AF_SSB };
 
 void     bk4819_init(void);                     /* GPIO + the stock register init */
 void     bk4819_write(uint8_t reg, uint16_t val);
@@ -19,7 +19,8 @@ void     bk4819_off(void);                      /* REG_30 = 0: receiver and tran
 void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uint16_t tone_value,
                    int scramble);               /* transmit on */
 void     bk4819_pa_off(void);
-void     bk4819_af(int type);                   /* audio output: mute, FM or AM */
+void     bk4819_af(int type);                   /* audio output: mute, FM, AM or SSB */
+void     bk4819_ssb(int on);                    /* after bk4819_rx(): IF and AFC for SSB, or as they were */
 int      bk4819_rssi_dbm(void);
 void     bk4819_gpio(uint8_t mask, int on);     /* the BK4819's own GPIO pins (REG_33) */
 void     bk4819_beep(int on, uint16_t hz);      /* local tone; after it, call bk4819_rx() again */

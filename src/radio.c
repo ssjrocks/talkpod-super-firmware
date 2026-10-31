@@ -95,7 +95,7 @@ static void squelch_regs(uint16_t *reg78, uint16_t *reg4f)
 static void set_open(int on)
 {
     open = (uint8_t)on;
-    bk4819_af(on && !hold ? (am ? BK_AF_AM : BK_AF_FM) : BK_AF_MUTE);
+    bk4819_af(on && !hold ? (am == MOD_SSB ? BK_AF_SSB : am ? BK_AF_AM : BK_AF_FM) : BK_AF_MUTE);
     board_speaker(SPK_RADIO, on);
     board_led(0, on);
 }
@@ -122,9 +122,10 @@ void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
     muted = 0;
     squelch_regs(&r78, &r4f);
     carrier = 0;
-    bk4819_rx(freq, narrow, r78, r4f, am ? BK_TONE_NONE : tone, tone_value, am ? 0 : scramble);
+    bk4819_rx(freq, narrow || am == MOD_SSB, r78, r4f, am ? BK_TONE_NONE : tone, tone_value, am ? 0 : scramble);
+    bk4819_ssb(am == MOD_SSB);
     board_rf_path(freq, RF_RX);
-    set_open(monitor || level == 0);
+    set_open(monitor || level == 0 || am == MOD_SSB);
 }
 
 uint32_t radio_freq(void)
@@ -182,7 +183,8 @@ int radio_poll(void)
         return 0;
     uint16_t r0c = bk4819_read(0x0C);
     carrier = (r0c & 0x0002) != 0;
-    int want = monitor || level == 0 || (carrier && tone_heard_in(r0c));
+    int want = monitor || level == 0 || am == MOD_SSB ||   /* SSB has no carrier to open on */
+               (carrier && tone_heard_in(r0c));
     if (want == open)
         return 0;
     set_open(want);

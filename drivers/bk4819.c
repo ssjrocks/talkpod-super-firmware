@@ -289,8 +289,23 @@ void bk4819_pa_off(void)
 
 void bk4819_af(int type)
 {
-    static const uint16_t reg47[] = {0x6040, 0x6140, 0x6740};   /* mute, FM, AM */
+    static const uint16_t reg47[] = {0x6040, 0x6140, 0x6740, 0x6540};   /* mute, FM, AM, baseband */
     bk4819_write(0x47, reg47[type]);
+}
+
+/* SSB, as the UV-K5's USB mode (kamilsss655, RADIO_SetModulation): baseband audio (above), IF at 0
+   (REG_3D, 0x2AAB after reset, which stock never changes) and AFC off (REG_73 bit 4). With the IF at 0
+   the chip is a direct-conversion receiver: both sides of the tuned frequency come out, so tuned to
+   the suppressed carrier it should receive upper and lower sideband alike. */
+void bk4819_ssb(int on)
+{
+    static uint8_t ssb;
+    if (on == ssb)
+        return;
+    ssb = (uint8_t)on;
+    uint16_t r73 = bk4819_read(0x73);
+    bk4819_write(0x3D, on ? 0 : 0x2AAB);
+    bk4819_write(0x73, (uint16_t)(on ? r73 | 1u << 4 : r73 & ~(1u << 4)));
 }
 
 int bk4819_rssi_dbm(void)

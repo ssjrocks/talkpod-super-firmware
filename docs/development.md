@@ -108,6 +108,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 | APRS receive | | ✓ with ideal captures; the BK4819 demodulator is untested |
 | POCSAG send / receive | | ✓ |
 | Scrambler, fixed (UV-K5 types) | ✓ heard on another radio (types 1, 2): weak | ✓ register values |
+| SSB receive | | ✓ registers, PTT refused; both sidebands unproven |
 | Rolling scrambler | ✓ heard on another radio (without the key) | ✓ burst, glide sent and received against `tools/roll.py`, other key refused |
 | Settings in the window (1.13): copied from older firmware's place, written by Talkpod Manager | ✓ read, written and applied without a restart | ✓ records from `tsf_settings.py` applied |
 | Boot splash upload, `i` / `G` | ✓ | ✓ playback |

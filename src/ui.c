@@ -50,8 +50,9 @@
 
 enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM };
 
-static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000};
-static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M"};
+static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000, 100, 10, 1};
+static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M",
+                                         "1k", "100 Hz", "10 Hz"};
 #define STEP_COUNT ((int)(sizeof steps / sizeof steps[0]))
 static const uint8_t backlight_s[] = {0, 5, 10, 15, 20, 30, 60, 120, 180};  /* as stock; 0 = always on */
 static const char *const backlight_names[] = {"Always", "5 s", "10 s", "15 s", "20 s", "30 s", "1 min",
@@ -259,7 +260,8 @@ static void draw_slot(int i)
         mp = put_str(mp, "X ");                             /* transmit off */
     else if (s->tx != s->freq)
         mp = put_str(mp, s->tx > s->freq ? "+ " : "- ");    /* repeater shift / split */
-    mp = put_str(put_str(mp, (fscan ? channel_is_am(f) : s->am) ? "AM " : s->narrow ? "N " : "W "),
+    int mod = fscan ? channel_is_am(f) : s->am;
+    mp = put_str(put_str(mp, mod == MOD_SSB ? "SSB " : mod ? "AM " : s->narrow ? "N " : "W "),
                  s->low_power ? "L" : "H");
     if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
         mp = put_str(mp, s->rx_tone.type == TONE_ENCRY || s->tx_tone.type == TONE_ENCRY ? " E"
@@ -373,14 +375,13 @@ static const char *const tone_names[] = {"1000 Hz", "1450 Hz", "1750 Hz", "2100 
 static const char *const quit_names[] = {"5 s", "10 s", "15 s", "20 s", "25 s", "30 s", "35 s", "40 s",
                                          "45 s", "50 s", "60 s"};
 static const uint8_t quit_s[] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60};
-enum { FN_PTT_B = 0x01, FN_SOS = 0x03, FN_MONITOR = 0x05, FN_FM = 0x07, FN_LIGHT = 0x08, FN_TXP = 0x0A,
-       FN_NOAA = 0x0C, FN_SCAN = 0x1C, FN_SEARCH = 0x1D, FN_REMOTE = 0x23, FN_DTMF = 0x2A, FN_REVERSE = 0x2D,
-       FN_OFF = 0xFF };
-static const uint8_t fn_vals[] = {FN_OFF, FN_FM, FN_TXP, FN_SCAN, FN_SEARCH, FN_LIGHT, FN_NOAA, FN_MONITOR,
+enum { FN_PTT_B = 0x01, FN_SOS = 0x03, FN_MONITOR = 0x05, FN_FM = 0x07, FN_TXP = 0x0A,
+       FN_SCAN = 0x1C, FN_SEARCH = 0x1D, FN_REMOTE = 0x23, FN_DTMF = 0x2A, FN_REVERSE = 0x2D, FN_OFF = 0xFF };
+static const uint8_t fn_vals[] = {FN_OFF, FN_FM, FN_TXP, FN_SCAN, FN_SEARCH, FN_MONITOR,
                                   FN_PTT_B, FN_SOS, FN_DTMF, FN_REVERSE, FN_REMOTE};
-static const char *const fn_names[] = {"Off", "FM radio", "TX power", "Scan", "Search", "Light", "NOAA",
+static const char *const fn_names[] = {"Off", "FM radio", "TX power", "Scan", "Search",
                                        "Monitor", "PTT B", "SOS", "DTMF", "Reverse", "Remote"};
-#define FN_ITEM(name, field) {name, OFFS(field), 13, fn_names, fn_vals}
+#define FN_ITEM(name, field) {name, OFFS(field), 11, fn_names, fn_vals}
 static const stock_item_t stock_items[] = {
     {"Battery save", OFFS(save), 4, save_names, 0},
     {"VOX", OFFS(vox), 11, vox_names, 0},
@@ -439,6 +440,7 @@ static void stock_change(const stock_item_t *it, int dir)
     ((uint8_t *)&stock)[it->off] = it->vals ? it->vals[i] : (uint8_t)i;
 }
 static const char *const msg_speed_names[] = {"1200", "700", "450"};
+static const char *const mod_names[] = {"FM", "AM", "SSB"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
 static uint8_t menu_pos, menu_top, editing;
 
@@ -450,7 +452,7 @@ static void menu_value(int item, char *s)
     case M_SQUELCH:    put_dec(s, (uint32_t)radio_squelch()); break;
     case M_STEP:       put_str(s, step_names[step]); break;
     case M_BANDWIDTH:  put_str(s, sl->is_channel ? "channel" : sl->vfo_narrow ? "Narrow" : "Wide"); break;
-    case M_MODULATION: put_str(s, sl->is_channel ? "channel" : sl->vfo_am ? "AM" : "FM"); break;
+    case M_MODULATION: put_str(s, sl->is_channel ? "channel" : mod_names[sl->vfo_am]); break;
     case M_DUAL:       put_str(s, watch_dual() ? "On" : "Off"); break;
     case M_BACKLIGHT:  put_str(s, backlight_names[stock.abr]); break;
     case M_TOT:        put_str(s, tot_names[stock.tot]); break;
@@ -1395,6 +1397,10 @@ static void ptt_down(void)
         ptt_refused("Channel busy");         /* busy channel lockout */
         return;
     }
+    if (s->am == MOD_SSB) {
+        ptt_refused("SSB is receive only");   /* the BK4819 transmits FM */
+        return;
+    }
     if (s->scramble == BK_SCRAMBLE_ROLL && !roll_cfg.key[0]) {
         ptt_refused("Set Scramble key (menu)");
         return;
@@ -1543,9 +1549,9 @@ static void key_main(const key_event_t *ev)
             if (s->is_channel) {
                 show_toast("channel: fixed");
             } else {
-                s->vfo_am ^= 1;
+                s->vfo_am = (uint8_t)((s->vfo_am + 1) % 3);
                 watch_update(sel);
-                show_toast(s->vfo_am ? "AM" : "FM");
+                show_toast(mod_names[s->vfo_am]);
             }
             draw_main();
         } else if (entry_len) {
@@ -1712,20 +1718,6 @@ static void side_function(uint8_t fn, int press)
         if (screen == SCR_FM)
             return;
         break;
-    case FN_NOAA: {                     /* the weather channels, one more each press, in the VFO */
-        static const uint32_t wx[7] = {16255000, 16240000, 16247500, 16242500, 16245000, 16250000, 16252500};
-        static uint8_t n;
-        char t[12];
-        stop_activity();
-        s->is_channel = 0;
-        s->vfo = wx[n];
-        s->vfo_am = 0;
-        n = (uint8_t)((n + 1) % 7);
-        watch_update(watch_selected());
-        put_dec(put_str(t, "NOAA "), n ? n : 7u);
-        show_toast(t);
-        break;
-    }
     case FN_REVERSE:
         s->reverse ^= 1;
         watch_update(watch_selected());
@@ -2033,7 +2025,7 @@ static void menu_change(int dir)
         break;
     case M_MODULATION:
         if (!s->is_channel) {
-            s->vfo_am ^= 1;
+            s->vfo_am = (uint8_t)((s->vfo_am + 3 + dir) % 3);
             watch_update(watch_selected());
         }
         break;
@@ -2154,7 +2146,7 @@ static void key_menu(const key_event_t *ev)
 
 typedef struct __attribute__((packed)) {
     struct __attribute__((packed)) {
-        uint8_t is_channel, flags;      /* flags: 1 VFO AM, 2 VFO narrow, 4 low power */
+        uint8_t is_channel, flags;      /* flags: 1 VFO AM, 2 VFO narrow, 4 low power, 8 VFO SSB */
         uint16_t channel;
         uint32_t vfo;
     } slot[2];
@@ -2173,7 +2165,8 @@ static void gather(saved_t *v)
     for (int i = 0; i < 2; i++) {
         slot_t *s = watch_slot(i);
         v->slot[i].is_channel = s->is_channel;
-        v->slot[i].flags = (uint8_t)(s->vfo_am | s->vfo_narrow << 1 | s->low_power << 2);
+        v->slot[i].flags = (uint8_t)((s->vfo_am == MOD_AM) | s->vfo_narrow << 1 | s->low_power << 2 |
+                                     (s->vfo_am == MOD_SSB) << 3);
         v->slot[i].channel = s->channel;
         v->slot[i].vfo = s->vfo;
     }
@@ -2205,7 +2198,7 @@ static void apply(const saved_t *v)
         slot_t *s = watch_slot(i);
         if (v->slot[i].vfo >= 1800000 && v->slot[i].vfo <= 130000000)
             s->vfo = v->slot[i].vfo;
-        s->vfo_am = v->slot[i].flags & 1;
+        s->vfo_am = v->slot[i].flags & 8 ? MOD_SSB : v->slot[i].flags & 1;
         s->vfo_narrow = (v->slot[i].flags >> 1) & 1;
         if (channel_read(v->slot[i].channel, &ch))
             s->channel = v->slot[i].channel;

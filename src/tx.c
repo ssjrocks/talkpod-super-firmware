@@ -75,6 +75,7 @@ int tx_start(uint32_t f, int narrow, int low_power, int tone, uint16_t tone_valu
     board_rf_path(f, RF_OFF);
     delay_ms(50);                               /* stock waits 50 ms after PA off */
     board_rf_path(f, RF_TX);
+    bk4819_ssb(0);                              /* the other slot may have been listening in SSB */
     bk4819_tx(f, narrow, tx_power_reg(f, low_power), tone, tone_value, scramble);
     board_led(1, 0);
     tail_dcs = tone >= BK_TONE_DCS;

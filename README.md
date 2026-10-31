@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.16**. Builds to about 57 KB of the MCU's 63 KB application flash.
+Version **1.17**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
 ![UI mockups](docs/ui/mockups.png)
 
@@ -42,7 +42,8 @@ Version **1.16**. Builds to about 57 KB of the MCU's 63 KB application flash.
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working |
-| FM broadcast radio (BK1080), NOAA weather channels on a side key | emulator-tested; on-air test pending |
+| FM broadcast radio (BK1080) | emulator-tested; on-air test pending |
+| SSB receive on a VFO slot, with 1 kHz to 10 Hz steps; meant for both sidebands | emulator-tested; on-air test pending |
 | Stock's ENCRY, a private code squelch: the same registers as stock in all cases tried | emulator-tested; on-air test pending |
 | Frequency scanner: a typed range and step, AM on airband and 27 MHz CB, stops into VFO mode | emulator-tested; on-air test pending |
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
@@ -60,7 +61,7 @@ Version **1.16**. Builds to about 57 KB of the MCU's 63 KB application flash.
 | Ten short sounds (key beep, menu, high / low, power-on, low voltage...) | working (built from the radio's own voice prompts) |
 
 The firmware does **not** have yet:
-- the side key functions Remote (unknown so far), Light and DTMF (not on this radio's stock firmware);
+- the side key functions Remote (unknown so far) and DTMF (not on this radio's stock firmware);
 - stock's DTMF side tone, language, and scanning for CTCSS / DCS tones;
 - channel editing on the radio (program channels with Talkpod Manager or CHIRP).
 

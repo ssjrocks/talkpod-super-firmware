@@ -250,6 +250,15 @@ anything else:
 | 0x4000 / 0x5000 / 0x6000 / 0x7000 | settings logs (1.13+): main, APRS, pager, scramble key (32-byte records). In the window, which stock leaves empty, so Talkpod Manager's Read / Write carry them |
 | 0x1E0000 / 0x1E1000 / 0x1E2000 / 0x1E3000 | where 1.0–1.12 kept them; 1.13 reads them once, while the window has none, and copies them over |
 
+### SSB receive
+
+The BK4819 has no SSB demodulator, but its audio output can be switched to baseband (REG_47 0x6540) with
+the IF at 0 (REG_3D, 0x2AAB after reset) and AFC off (REG_73 bit 4), as the UV-K5's USB mode does. That
+makes it a direct-conversion receiver, which should fold both sides of the tuned frequency onto the
+same audio: one mode for both sidebands, with no rejection of the other one. Not yet confirmed on
+this radio. To test without an SSB signal: key another radio without talking (a plain carrier), tune
+1 kHz above it and 1 kHz below it, and listen for the 1 kHz tone on each side.
+
 **Channel record**, 32 bytes, the same as CHIRP's `mml_jc8810` driver:
 
 | Bytes | Field |

@@ -18,6 +18,7 @@ int  radio_busy(void);                      /* a signal is there, whatever its t
 int  radio_rssi_dbm(void);
 void radio_mute(void);
 void radio_sleep(void);                         /* receiver off until the next radio_retune() */                      /* audio off until the next radio_tune() */
+enum { MOD_FM, MOD_AM, MOD_SSB };                /* radio_tune()'s am_mode */
 enum { HOLD_VOICE = 1, HOLD_DATA = 2, HOLD_TAIL = 4 };
 void radio_audio_hold(int who, int on);     /* keep received audio muted: a sound plays, data arrives */
 int  radio_narrow(void);

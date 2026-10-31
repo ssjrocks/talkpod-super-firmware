@@ -28,7 +28,7 @@ hears a signal and 1 s after.
 |---|---|---|
 | 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 7 **APRS** · 8 **Pager** |
 | MENU | confirm what was typed, otherwise open the menu | switch the selected slot between channel and VFO |
-| FM | FM / AM (VFO slot) | key lock on / off |
+| FM | FM, AM, SSB (VFO slot) | key lock on / off |
 | A/B | select the other slot | |
 | UP / DOWN | next / previous channel, or VFO up / down one step (repeats when held) | |
 | BACK | cancel typing, stop a scan or search | |
@@ -125,7 +125,7 @@ Both are privacy against casual listening, not security.
 UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), BACK
 leaves. Settings are saved 3 s after the last change and survive power-off. They're stock's own settings where
 stock has the same one. Talkpod Manager shows them on its Settings page: Read brings in what the radio
-has, Write sends your changes. Side key functions Light, DTMF and Remote aren't there and say so.
+has, Write sends your changes. Side key functions DTMF and Remote aren't there and say so.
 
 | Item | Values |
 |---|---|
@@ -134,9 +134,9 @@ has, Write sends your changes. Side key functions Light, DTMF and Remote aren't 
 | APRS | opens the APRS screen |
 | Pager | opens the Pager screen |
 | Squelch | 0–9 |
-| Step | 2.5, 5, 6.25, 10, 12.5, 25, 100 kHz, 1 MHz |
+| Step | 2.5, 5, 6.25, 10, 12.5, 25, 100 kHz, 1 MHz, then 1 kHz, 100 Hz, 10 Hz for SSB |
 | Bandwidth | wide / narrow (VFO slot; a channel has its own) |
-| Modulation | FM / AM (VFO slot) |
+| Modulation | FM, AM, SSB (VFO slot) |
 | Dual watch | on / off |
 | Backlight | always on, 5, 10, 15, 20, 30 s, 1, 2, 3 min |
 | TX timeout | off, 30 s, 60 s, 2, 4, 8 min |
@@ -168,7 +168,7 @@ has, Write sends your changes. Side key functions Light, DTMF and Remote aren't 
 | Tone burst | 1000, 1450, 1750, 2100 Hz |
 | Power-on | Logo (the boot splash) or Voltage |
 | Menu exit | leaves the menu after this long without a key |
-| Side 2, Side 2 long, Side 1, Top key | FM radio, TX power, Scan, Search, Light, NOAA, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
+| Side 2, Side 2 long, Side 1, Top key | FM radio, TX power, Scan, Search, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
 | About | firmware version, board, battery, number of channels |
 
 ## FM radio
@@ -177,7 +177,13 @@ A side key set to **FM radio** opens it (65.0–108.0 MHz). UP / DOWN tune by 0.
 frequency (`1 0 1 5` is 101.5 MHz; `8 7 5` and MENU is 87.5). BACK goes back to the radio, and PTT
 transmits at once. Calls aren't heard while it plays.
 
-A side key set to **NOAA** puts the slot's VFO on the next weather channel at each press.
+## SSB
+
+On a VFO slot, FM steps through FM, AM and **SSB**. SSB is receive only: the BK4819 only transmits FM,
+so PTT says so. The speaker stays open, since SSB has no carrier for a squelch to open on. Use the fine
+steps (menu Step: 1k, 100 Hz, 10 Hz) and tune for natural-sounding voice, with the VFO on the signal's
+suppressed carrier. One mode is meant to cover upper and lower sideband: see
+[hardware.md](hardware.md#ssb-receive).
 
 ## Typing text
 
