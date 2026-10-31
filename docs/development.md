@@ -107,7 +107,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 | POCSAG send / receive | | ✓ |
 | Scrambler, fixed (UV-K5 types) | ✓ heard on another radio (types 1, 2): weak | ✓ register values |
 | Rolling scrambler | ✓ heard on another radio (without the key) | ✓ burst, glide sent and received against `tools/roll.py`, other key refused |
-| Settings in the window (1.13): read from older firmware's place, written by Talkpod Manager | | ✓ records from `tsf_settings.py` applied; old ones copied in |
+| Settings in the window (1.13): copied from older firmware's place, written by Talkpod Manager | ✓ read, written and applied without a restart | ✓ records from `tsf_settings.py` applied |
 | Boot splash upload, `i` / `G` | ✓ | ✓ playback |
 
 ## Known issues and ideas
