@@ -16,7 +16,7 @@
 #define HANG_MS       2000      /* resume this long after the signal went away */
 #define HOLD_TO_MS    5000      /* scan resume TO: move on after this long, signal or not */
 
-static uint8_t mode, holding, narrow;
+static uint8_t mode, holding, narrow, modulation;
 static int8_t dir;
 static uint32_t lo, hi, step, tuned_at, closed_since, held_at;
 static uint8_t tone_wanted;
@@ -41,11 +41,16 @@ int channel_is_am(uint32_t f)
     return (f >= 10800000 && f < 13700000) || (f >= 2696000 && f <= 2741000);
 }
 
+int scan_modulation(uint32_t f)
+{
+    return modulation == SCAN_AUTO ? channel_is_am(f) : modulation == SCAN_AM ? MOD_AM : MOD_FM;
+}
+
 static void tune_vfo(uint32_t f)
 {
     tone_wanted = 0;
     radio_set_tone(TONE_NONE, 0, 0);
-    radio_tune(f, channel_is_am(f), narrow);
+    radio_tune(f, scan_modulation(f), narrow);
     tuned_at = millis();
 }
 
@@ -112,8 +117,9 @@ int scan_lockouts(void)
     return nlock;
 }
 
-void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int nb)
+void scan_start_vfo(uint32_t from_lo, uint32_t to_hi, uint32_t st, int nb, int mod)
 {
+    modulation = (uint8_t)mod;
     lo = from_lo;
     hi = to_hi;
     step = st;

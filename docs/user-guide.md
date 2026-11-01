@@ -50,12 +50,13 @@ VFO tunes 18–1300 MHz, but the BK4819 does not receive or transmit in 660–84
 puts it in the VFO.
 
 **Frequency scanner** (first item in the menu): type **From** and **To** in MHz, the same way as a
-VFO frequency (MENU moves on), choose the **Step** with UP / DOWN, and MENU starts it. It remembers
-the range. It runs on the main screen, shows `SCAN`, and stops on a signal; **Scan resume** in the menu
+VFO frequency (MENU moves on), choose the **Step** and the **Mode** with UP / DOWN, and MENU starts
+it. It remembers all of them. It runs on the main screen, shows `SCAN`, and stops on a signal; **Scan resume** in the menu
 says when it moves on (by default 2 s after the signal ends). UP and DOWN set the scan's direction
-and move on at once, also off a signal it stopped on. 0 locks a frequency out for this scan. BACK stops it and leaves the slot in VFO mode on that frequency. Airband (108–137 MHz)
-and 27 MHz CB (26.96–27.41 MHz) are received in AM automatically, and it jumps over 660–840 MHz, which
-the chip can't tune.
+and move on at once, also off a signal it stopped on. 0 locks a frequency out for this scan. BACK stops it and leaves the slot in VFO mode on that frequency, in the mode it was scanning in. Mode
+**Auto** receives airband (108–137 MHz) and 27 MHz CB (26.96–27.41 MHz) in AM and everything else in FM;
+**FM** and **AM** use that mode across the whole range. It doesn't scan in SSB. It jumps over 660–840 MHz,
+which the chip can't tune.
 
 **Channel scan** (long 6 or side key 2) steps through the channels marked for scanning. It stops on
 a signal and moves on 2 s after it ends. During a scan, 0 locks the current channel out for this

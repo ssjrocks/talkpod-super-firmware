@@ -36,6 +36,7 @@
 enum { OFF, TX, RX };
 
 roll_cfg_t roll_cfg;
+_Static_assert(sizeof(roll_cfg_t) <= SETTINGS_MAX, "the scramble record is full");
 
 static struct {
     uint32_t rng, t0, dur;          /* the segment from t0 lasts dur ms */

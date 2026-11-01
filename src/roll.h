@@ -7,7 +7,8 @@
 typedef struct __attribute__((packed)) {
     char key[15];                       /* shared by the radios that talk on rolling channels */
     uint32_t scan_lo, scan_hi;          /* the frequency scanner's range (10 Hz units), kept here too */
-    uint8_t scan_step;                  /* an index into ui.c's steps[] */
+    uint8_t scan_step : 4;              /* an index into ui.c's steps[] */
+    uint8_t scan_mod : 2;               /* SCAN_AUTO / FM / AM; the record has no byte left for it */
     uint16_t fm;                        /* the FM radio's frequency, 0.1 MHz */
 } roll_cfg_t;
 extern roll_cfg_t roll_cfg;

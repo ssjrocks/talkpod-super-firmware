@@ -266,7 +266,7 @@ static void draw_slot(int i)
         mp = put_str(mp, "X ");                             /* transmit off */
     else if (s->tx != s->freq)
         mp = put_str(mp, s->tx > s->freq ? "+ " : "- ");    /* repeater shift / split */
-    int mod = fscan ? channel_is_am(f) : s->am;
+    int mod = fscan ? scan_modulation(f) : s->am;
     mp = put_str(put_str(mp, mod == MOD_SSB ? "SSB " : mod ? "AM " : s->narrow ? "N " : "W "),
                  s->low_power ? "L" : "H");
     if (s->rx_tone.type != TONE_NONE || s->tx_tone.type != TONE_NONE)
@@ -926,7 +926,7 @@ static void open_edit(int kind)
 
 /* ---- frequency scanner (menu): From, To, Step, then it runs on the main screen ---------------- */
 
-static uint8_t fs_field, fs_len;        /* 0 From, 1 To, 2 Step; digits typed in this field */
+static uint8_t fs_field, fs_len;        /* 0 From, 1 To, 2 Step, 3 Mode; digits typed in this field */
 static char fs_digits[8];
 
 static void stop_activity(void);
@@ -948,18 +948,19 @@ static void put_mhz(char *s, uint32_t f)
 
 static void draw_fscan(void)
 {
-    static const char *const labels[3] = {"From", "To", "Step"};
+    static const char *const labels[4] = {"From", "To", "Step", "Mode"};
+    static const char *const mods[SCAN_MODS] = {"Auto", "FM", "AM"};
     char v[12];
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, "Freq scanner", C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         int y = 20 + i * 18, on = i == fs_field;
         uint16_t bg = on ? C_PANEL2 : C_BG;
         if (on)
             gfx_rrect(2, y - 2, 124, 16, bg);
-        if (i == 2) {
-            put_str(v, step_names[roll_cfg.scan_step]);
+        if (i >= 2) {
+            put_str(v, i == 2 ? step_names[roll_cfg.scan_step] : mods[roll_cfg.scan_mod]);
         } else if (on && fs_len) {
             for (int k = 0, n = 0; k < 8; k++)
                 v[k] = k == 3 ? '.' : n < fs_len ? fs_digits[n++] : '-';
@@ -970,9 +971,9 @@ static void draw_fscan(void)
         gfx_text(6, y + 1, &font_6x10, labels[i], C_TEXT, bg);
         gfx_text(122 - gfx_text_width(&font_7x13b, v), y, &font_7x13b, v, on ? C_AMBER : C_DIM, bg);
     }
-    gfx_text(4, 80, &font_5x8, fs_field < 2 ? "Type MHz, 7 digits" : "UP / DOWN change", C_DIM, C_BG);
-    gfx_text(4, 90, &font_5x8, fs_field < 2 ? "MENU next" : "MENU start scanning", C_DIM, C_BG);
-    gfx_text(4, 100, &font_5x8, "BACK delete / leave", C_DIM, C_BG);
+    gfx_text(4, 91, &font_5x8, fs_field < 2 ? "Type MHz, 7 digits" : "UP / DOWN change", C_DIM, C_BG);
+    gfx_text(4, 100, &font_5x8, fs_field < 3 ? "MENU next" : "MENU start scanning", C_DIM, C_BG);
+    gfx_text(4, 109, &font_5x8, "BACK delete / leave", C_DIM, C_BG);
     lcd_fill(0, LCD_H - 10, LCD_W, 10, C_BG);
     if ((int32_t)(toast_until - millis()) > 0)
         gfx_text(4, LCD_H - 9, &font_5x8, toast, C_AMBER, C_BG);
@@ -987,6 +988,8 @@ static void open_fscan(void)
     }
     if (roll_cfg.scan_step >= STEP_COUNT)
         roll_cfg.scan_step = 4;
+    if (roll_cfg.scan_mod >= SCAN_MODS)
+        roll_cfg.scan_mod = SCAN_AUTO;
     fs_field = 0;
     fs_len = 0;
     screen = SCR_FSCAN;
@@ -1032,7 +1035,8 @@ static void fs_start(void)
     voice_stop();
     watch_pause(1);
     screen = SCR_MAIN;
-    scan_start_vfo(roll_cfg.scan_lo, roll_cfg.scan_hi, steps[roll_cfg.scan_step], s->vfo_narrow);
+    scan_start_vfo(roll_cfg.scan_lo, roll_cfg.scan_hi, steps[roll_cfg.scan_step], s->vfo_narrow,
+                   roll_cfg.scan_mod);
     draw_main();
 }
 
@@ -1046,7 +1050,7 @@ static void key_fscan(const key_event_t *ev)
         if (fs_len == 7 && fs_commit())
             fs_field++;
     } else if (ev->key == KEY_MENU) {
-        if (fs_field == 2) {
+        if (fs_field == 3) {
             fs_start();
             return;
         }
@@ -1055,7 +1059,9 @@ static void key_fscan(const key_event_t *ev)
     } else if (ev->key == KEY_UP || ev->key == KEY_DOWN) {
         int dir = ev->key == KEY_DOWN ? 1 : -1;
         if (fs_field == 2) {
-            roll_cfg.scan_step = (uint8_t)((roll_cfg.scan_step + STEP_COUNT + dir) % STEP_COUNT);
+            roll_cfg.scan_step = (uint8_t)((roll_cfg.scan_step + STEP_COUNT + dir) % STEP_COUNT) & 15;
+        } else if (fs_field == 3) {
+            roll_cfg.scan_mod = (uint8_t)((roll_cfg.scan_mod + SCAN_MODS + dir) % SCAN_MODS) & 3;
         } else if (fs_commit()) {
             fs_field = (uint8_t)(fs_field ^ 1);
         }
@@ -1216,7 +1222,7 @@ static void stop_activity(void)
         if (fscan) {                        /* stays on this frequency, in VFO mode */
             s->is_channel = 0;
             s->vfo = radio_freq();
-            s->vfo_am = (uint8_t)channel_is_am(s->vfo);
+            s->vfo_am = (uint8_t)scan_modulation(s->vfo);
         } else if (scan_channel()) {
             s->is_channel = 1;
             s->channel = (uint16_t)scan_channel();

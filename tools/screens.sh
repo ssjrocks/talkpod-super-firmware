@@ -28,7 +28,7 @@ shot fs-setup --flash "$flash" --ms 1500 --keys 700:MENU:60,950:MENU:60
 
 # the scanner on 121.5 to 121.9 MHz, stopped on a signal in AM
 range="700:MENU:60,950:MENU:60,1300:1:50,1430:2:50,1560:1:50,1690:5:50,1820:0:50,1950:0:50,2080:0:50"
-range+=",2310:1:50,2440:2:50,2570:1:50,2700:9:50,2830:0:50,2960:0:50,3090:0:50,3320:MENU:60"
+range+=",2310:1:50,2440:2:50,2570:1:50,2700:9:50,2830:0:50,2960:0:50,3090:0:50,3320:MENU:60,3500:MENU:60"
 shot fs-run --flash "$flash" --ms 5000 --keys "$range" --signal-at 12160000 --bkreg 0x67=0x00A0
 
 keys="600:MENU:60"

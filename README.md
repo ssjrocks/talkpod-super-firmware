@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.19**. Builds to about 57 KB of the MCU's 63 KB application flash.
+Version **1.20**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -17,7 +17,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ![Screens from the firmware](docs/ui/screens.png)
 
-*Version 1.19 running in the emulator (`tools/screens.sh`).*
+*Version 1.20 running in the emulator (`tools/screens.sh`).*
 
 > **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
 > 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
@@ -52,7 +52,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 | FM broadcast radio (BK1080) | emulator-tested; on-air test pending |
 | SSB receive on a VFO slot, with 1 kHz to 10 Hz steps; meant for both sidebands | emulator-tested; on-air test pending |
 | Stock's ENCRY, a private code squelch: the same registers as stock in all cases tried | emulator-tested; on-air test pending |
-| Frequency scanner: a typed range and step, AM on airband and 27 MHz CB, stops into VFO mode | emulator-tested; on-air test pending |
+| Frequency scanner: a typed range and step, in FM, AM or Auto (AM on airband and 27 MHz CB), stops into VFO mode | emulator-tested; on-air test pending |
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
