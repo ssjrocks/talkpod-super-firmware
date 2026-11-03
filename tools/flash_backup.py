@@ -14,8 +14,6 @@ import random
 import sys
 import time
 
-import serial
-
 CHUNK = 4096
 
 
@@ -48,6 +46,7 @@ def main():
     a = ap.parse_args()
 
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
+    import serial                       # only the radio needs pyserial
     s = serial.Serial(a.port, 57600, timeout=3)
     s.write(b"\r")
     time.sleep(0.3)

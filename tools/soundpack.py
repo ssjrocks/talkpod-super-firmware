@@ -14,8 +14,6 @@ import struct
 import sys
 import time
 
-import serial
-
 from extract_voice import DATA_BASE, FIRST, INDEX, RATE
 from flash_backup import crc16, read_chunk
 
@@ -54,6 +52,7 @@ def main():
     print(f"pack: {len(KEEP)} sounds, {len(pack)} bytes")
     if a.dry_run:
         return
+    import serial                       # only the upload needs pyserial
     s = serial.Serial(a.port, 57600, timeout=0.2)
     s.write(b"\r")
     time.sleep(0.3)
