@@ -117,9 +117,11 @@ static void snd_mode(void)                  /* says how the selected slot is wor
     snd(watch_slot(watch_selected())->is_channel ? SND_CHANNEL_MODE : SND_FREQUENCY_MODE);
 }
 
-static int rssi_level(void)                 /* 0-16 meter segments, -125..-45 dBm */
+/* 0-16 meter segments of 6 dB, one S-unit each, from -125 dBm: full at -29 dBm. Until 1.20 they were
+   5 dB and full at -45 dBm, which a 5 W handheld a hundred metres away already passes. */
+static int rssi_level(void)
 {
-    int l = (radio_rssi_dbm() + 125) / 5;
+    int l = (radio_rssi_dbm() + 125) / 6;
     return l < 0 ? 0 : l > 16 ? 16 : l;
 }
 

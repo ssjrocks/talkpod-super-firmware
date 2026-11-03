@@ -113,6 +113,7 @@ static uint16_t pocsag_baud = 1200;
 static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
 static uint8_t gain_mic = 0x1A, gain_ctcss, gain_dcs;
+static uint16_t reg48 = 0xB3FF;                 /* stock's init value, until the calibration is set */
 
 /* The radio's calibration (flash 0xF210, in stock's RAM at 0x200000EE): the microphone gain and the
    levels of transmitted tones. Stock's REG_51 is its value below | this level. */
@@ -319,6 +320,15 @@ void bk4819_gpio(uint8_t mask, int on)
     bk4819_write(0x33, on ? (v | mask) : (v & (uint16_t)~mask));
 }
 
+/* Stock 0x8009a40: REG_48 = 0xB00F | gain << 4 whenever the audio output changes, with the gain from
+   the calibration (0xF213 wide, 0xF214 narrow; 0x1F on the radio measured). Its init value 0xB3FF is
+   the gain at 0x3F, which drove the audio into clipping before the volume knob. */
+void bk4819_af_gain(uint8_t gain)
+{
+    reg48 = (uint16_t)(0xB00F | (gain & 0x3F) << 4);
+    bk4819_write(0x48, reg48);
+}
+
 /* Stock 0x8009bd8(0): tone 1 to the local speaker only (REG_30 mode 3: no PLL, no PA). Mode 4,
    which stock uses with a non-zero argument, transmits the tone and is not used here. */
 void bk4819_beep(int on, uint16_t hz)
@@ -332,7 +342,7 @@ void bk4819_beep(int on, uint16_t hz)
         bk4819_write(0x48, 0xB8F5);
     } else {
         bk4819_write(0x70, 0x0000);
-        bk4819_write(0x48, 0xB3FF);
+        bk4819_write(0x48, reg48);
     }
 }
 

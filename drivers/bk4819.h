@@ -20,6 +20,7 @@ void     bk4819_tx(uint32_t freq_10hz, int narrow, uint16_t reg36, int tone, uin
                    int scramble);               /* transmit on */
 void     bk4819_pa_off(void);
 void     bk4819_af(int type);                   /* audio output: mute, FM, AM or SSB */
+void     bk4819_af_gain(uint8_t gain);          /* receive audio level from calibration (0-0x3F) */
 void     bk4819_ssb(int on);                    /* after bk4819_rx(): IF and AFC for SSB, or as they were */
 int      bk4819_rssi_dbm(void);
 void     bk4819_gpio(uint8_t mask, int on);     /* the BK4819's own GPIO pins (REG_33) */

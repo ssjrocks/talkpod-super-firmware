@@ -128,8 +128,9 @@ Each mode is written after 0x0000 or 0x0200:
 - **Receive start (channel without tones):** REG_37 = 0x1F0F, frequency, REG_43, REG_78 / REG_4F
   squelch, REG_51 = 0x9000, REG_07 = 0x0471 then 0x21CD, REG_52 = 0x0292, REG_28 = 0x6B38 (RX
   audio expander; init leaves 0x6B00), REG_30 = 0x0200 then 0xBFF1.
-- **Audio:** REG_47 = 0x6040 mute, 0x6140 FM, 0x6340 beep, **0x6740 AM**. REG_48 = 0xB3FF
-  (AF output gain). The volume knob works without the firmware.
+- **Audio:** REG_47 = 0x6040 mute, 0x6140 FM, 0x6340 beep, **0x6740 AM**. REG_48 = 0xB00F |
+  gain << 4 (AF output gain), the gain from the calibration at 0xF213 (wide) / 0xF214 (narrow). The
+  volume knob comes after it, so a gain set too high clips at any volume.
 
 ### RF path switches
 

@@ -83,7 +83,11 @@ tones), 0x80093a0 (REG_7D mic gain), REG_30 mode 2, 0x800961c.
 
 Audio output 0x8009a40(type): REG_47 = 0x6040 | table[type] << ... giving 6040 mute, 6140 FM,
 6340 beep; FM becomes 6740 (**AM**) when the channel modulation byte (0x200000a4) is 6.
-REG_48 = 0xB00F | (gain & 0x3F) << 4 (init uses 0xB3FF).
+REG_48 = 0xB00F | (gain & 0x3F) << 4, the receive audio level, with the gain from the calibration:
+0xF213 for wide, 0xF214 for narrow (0x200000a4 + 0x4d / 0x4e in RAM; the narrow flag is 0x20000494 + 9,
+the same one that picks REG_43). Init writes 0xB3FF, the gain at 0x3F; stock overwrites it on every
+audio change (0xB1FF on the radio measured). Firmware before 1.21 kept 0xB3FF, and its receive audio
+clipped.
 
 Sleep/standby 0x800bda4: BK4819 init, RF path off, 30=0000, 37=1D00 (BK4819 powered down), RTC
 wake-up set up, MCU into standby.
@@ -123,6 +127,10 @@ The sector 0xE000 is a third log the same way: 0x20 bytes of bitmap, records of 
 | 0xF210 | mic gain, REG_7D low bits (0x1A on the radio measured) |
 | 0xF211 | CTCSS level, REG_51 low 7 bits: 0x9000 | level (0x41) |
 | 0xF212 | DCS level, REG_51 low 7 bits: 0x8000 | level (0x30) |
+| 0xF213 | receive audio level, wide: REG_48 bits 9-4 (0x1F) |
+| 0xF214 | receive audio level, narrow: REG_48 bits 9-4 (0x1F) |
+| 0xF215-0xF218 | squelch noise threshold per band (0x39) |
+| 0xF219 | squelch noise hysteresis (0x02) |
 
 Running stock's tone functions on zeroed RAM logs REG_51 without these. Load them first.
 

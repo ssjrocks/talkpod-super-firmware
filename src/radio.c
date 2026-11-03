@@ -8,7 +8,8 @@
 
 static uint8_t sq_open[10], sq_close[10];   /* RSSI per squelch level (0xF0C0, 0xF0D0) */
 static uint8_t corr_400[16], corr_130[16], corr_200[16], corr_300[16];  /* per-frequency offsets */
-static uint8_t noise[16];                   /* 0xF210: [5 + band] threshold, [9] hysteresis */
+static uint8_t noise[16];                   /* 0xF210: [3] / [4] receive audio wide / narrow,
+                                               [5 + band] noise threshold, [9] hysteresis */
 
 static uint32_t freq = 47690000;
 static uint8_t am, narrow, level = 1, monitor, open, muted, hold, carrier;
@@ -124,6 +125,7 @@ void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
     carrier = 0;
     bk4819_rx(freq, narrow || am == MOD_SSB, r78, r4f, am ? BK_TONE_NONE : tone, tone_value, am ? 0 : scramble);
     bk4819_ssb(am == MOD_SSB);
+    bk4819_af_gain(noise[narrow || am == MOD_SSB ? 4 : 3]);    /* as the bandwidth above */
     board_rf_path(freq, RF_RX);
     set_open(monitor || level == 0 || am == MOD_SSB);
 }

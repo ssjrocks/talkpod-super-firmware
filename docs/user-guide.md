@@ -22,6 +22,10 @@ brings its own bandwidth and power; channels in 108–137 MHz and on 27 MHz CB r
 the receiver alternates between the two slots (about 110 ms each). It stays on a slot while it
 hears a signal and 1 s after.
 
+The **signal meter** has 16 segments of 6 dB, one S-unit each, from −125 dBm: it is full at −29 dBm,
+which only a transmitter very close by reaches. A 5 W handheld 100 m away reads about −40 to −55 dBm,
+in the amber.
+
 ### Keys
 
 | Key | Short press | Long press (0.6 s) |
