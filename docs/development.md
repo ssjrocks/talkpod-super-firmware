@@ -58,6 +58,8 @@ cycle stamps, `--pins` logs output changes among them. Also:
 - `--fsk-rx MS:HEX`
 - `--flash-out FILE`
 - `--voice` (lists the sounds played with their PWM swing, by running the timer interrupt)
+- `--stack` (the deepest stack use seen; slows the run down)
+- `--bkirq MS:FLAGS` (a BK4819 interrupt: REG_0C bit 0, then REG_02 reads FLAGS once; 0x0400 a squelch tail)
 - `--hwver 02`
 
 Time is simulated (about 48 MHz at two cycles per instruction), so timings are approximate.
@@ -83,10 +85,11 @@ Helpers:
 | `tools/flash_backup.py` | 2 MB flash backup over the shell (`X`), CRC-checked, about 6.5 min |
 | `tools/soundpack.py BACKUP` | builds the ten-sound pack from the backup's stock prompts and writes it (erases 0x110000–0x191FFF) |
 | `tools/extract_voice.py BACKUP` | all stock voice prompts as WAV files |
+| `tools/stock_set.py IN OUT NAME=VALUE ...` | a flash image with stock settings changed (names from `src/stock.h`), e.g. `ste=1 sql=0`; put OUT under `build/` |
 | `tools/voice_flash.py BACKUP OUT` | a flash image for `emu.py --voice`: the test image with the sound pack in it (put OUT under `build/`) |
 | `tools/splash.py` | boot splash: convert, upload, preview, remove ([serial-interface.md](serial-interface.md#boot-splash)) |
 | `tools/re/call_stock.py` | calls one function of a decrypted stock image in Unicorn and logs its BK4819 / GPIO activity ([stock-firmware.md](stock-firmware.md)) |
-| `tools/re/stockdis.py` | disassembly helper for the stock image |
+| `tools/re/stockdis.py` | disassembly helper for the stock image; `--all > build/stock.dis` disassembles all of it |
 | `tools/screens.sh` | renders the README's picture, `docs/ui/screens.png`, from the build in the emulator |
 | `tools/mockup.py`, `tools/mkfont.py`, `tools/mkaafont.py` | UI mockups, bitmap and anti-aliased font tables |
 | `tools/encrypt.c` | `.kdhx` scrambling |

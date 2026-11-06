@@ -40,6 +40,7 @@ C_SOURCES = \
   src/roll.c \
   src/stock.c \
   src/splash.c \
+  src/evlog.c \
   drivers/adc.c \
   gfx/font_5x8.c \
   gfx/font_7x13b.c \

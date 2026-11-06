@@ -3,6 +3,7 @@
 
 usage: stockdis.py STOCK.plain.bin ADDR[:COUNT] ...      COUNT instructions (default 40), linear
        stockdis.py STOCK.plain.bin --calls FUNC ...       every call to FUNC with constant r0-r3
+       stockdis.py STOCK.plain.bin --all > build/stock.dis   the whole image, skipping data
 """
 import re
 import struct
@@ -53,6 +54,12 @@ def main():
     fw = open(sys.argv[1], "rb").read()
     md = Cs(CS_ARCH_ARM, CS_MODE_THUMB | CS_MODE_MCLASS)
     args = sys.argv[2:]
+    if args and args[0] == "--all":
+        for ins in sweep(fw, md):
+            v = literal(fw, ins)
+            note = f"   ; ={v:#x}" if v is not None else ""
+            print(f"{ins.address:#x}: {ins.mnemonic:8s} {ins.op_str}{note}")
+        return
     if args and args[0] == "--calls":
         ins_list = sweep(fw, md)
         for func in args[1:]:

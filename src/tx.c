@@ -7,6 +7,7 @@
  * high and 0xD7 for low. A bias of 0 or 0xFF (not calibrated) gives 0x007F: PA bias off.
  */
 #include "tx.h"
+#include "evlog.h"
 #include "bk4819.h"
 #include "board.h"
 #include "radio.h"
@@ -82,6 +83,7 @@ int tx_start(uint32_t f, int narrow, int low_power, int tone, uint16_t tone_valu
     tx_freq = f;
     started = millis();
     active = 1;
+    evlog(EV_TX, 1, f);
     return 1;
 }
 
@@ -166,6 +168,7 @@ void tx_stop(void)
     board_led(0, 0);
     board_rf_path(tx_freq, RF_OFF);
     active = 0;
+    evlog(EV_TX, 0, tx_freq);
 }
 
 int tx_active(void)

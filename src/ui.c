@@ -1386,6 +1386,12 @@ static uint8_t ptt_paused;              /* PTT took the receiver (not when it wa
 static int8_t ptt_back = -1;            /* the slot to go back to: PTT B or Dual TX */
 static uint32_t tail_until;             /* HOLD_TAIL until then; 0: until the carrier goes */
 static uint8_t tail_held;
+static uint32_t tail_at;                /* when the received tail was found */
+/* A real squelch tail is followed by the end of the sender's carrier within this. Tones that only
+   look like a tail (selcall, other radios' tone squelch) and a repeater that keeps its carrier for
+   the next station aren't: until 1.21 the audio stayed muted until the carrier went, at squelch 0
+   for good. */
+#define TAIL_HOLD_MS 500
 
 static void ptt_refused(const char *why)
 {
@@ -2406,6 +2412,7 @@ static void messages(uint32_t now)
     if (e & MSG_EV_TAIL && stock.ste) {         /* the sender's tail: mute before the squelch closes */
         radio_audio_hold(HOLD_TAIL, 1);
         tail_held = 1;
+        tail_at = now;
     }
     if (e & MSG_EV_RECEIPT_DUE && !searching) {
         int scanning = scan_mode() != SCAN_OFF;
@@ -2668,7 +2675,7 @@ void ui_tick(void)
     }
     alarm_tick(now);
     vox_tick(now);
-    if (tail_held && !radio_busy()) {
+    if (tail_held && (!radio_carrier() || now - tail_at >= TAIL_HOLD_MS)) {
         tail_held = 0;
         radio_audio_hold(HOLD_TAIL, 0);
     }

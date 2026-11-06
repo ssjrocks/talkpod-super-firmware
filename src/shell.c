@@ -19,7 +19,7 @@
  *   v LO HI ST N  survey LO..HI Hz in ST Hz steps: per step, 80 ms after the retune, print kHz,
  *                 squelch bit, noise (REG_65), RSSI dBm, glitch (REG_63); any byte stops it
  *   i             one line about this firmware for tools such as Talkpod Manager:
- *                 "fw=TSF ver=1.21 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
+ *                 "fw=TSF ver=1.22 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
  *   G             play the boot splash now (a preview after uploading one), then "ok" or
  *                 "no splash"; the screen returns to what it showed
  * See docs/serial-interface.md.
@@ -38,6 +38,7 @@
 #include "watch.h"
 #include "splash.h"
 #include "version.h"
+#include "evlog.h"
 
 static char line[32];
 static volatile uint8_t line_len, line_ready;
@@ -389,9 +390,16 @@ void shell_poll(void)
     case 'v':
         survey(p);
         break;
+    case 'L':
+        evlog_dump();
+        break;
+    case 'l':
+        evlog_clear();
+        debug_puts("ok\r\n");
+        break;
     default:
         debug_puts("r RR | w RR VVVV | x/X ADDR LEN | E ADDR | W ADDR LEN | P ID | d | f HZ | s L | "
-                   "t HZ | b | m HZ N | v LO HI ST N | i | G\r\n");
+                   "t HZ | b | m HZ N | v LO HI ST N | i | G | L | l\r\n");
     }
     line_len = 0;
     line_ready = 0;

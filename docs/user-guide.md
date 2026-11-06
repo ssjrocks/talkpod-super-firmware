@@ -258,6 +258,13 @@ An animation plays once when the radio is switched on; any key skips it. Change 
 `tools/splash.py` (or Talkpod Manager): see
 [serial-interface.md](serial-interface.md#boot-splash).
 
+## When something goes wrong
+
+The radio keeps a log of its last 128 receiver events in memory: the squelch opening and closing,
+tunes, what muted the audio and why, data packets, transmissions. After something odd happens, plug
+in the programming cable without switching off and open **Event log** in Talkpod Manager (0.5.0 or
+later): it reads the log and explains each line. Switching off clears it.
+
 ## Sounds
 
 If the sound pack is installed (`tools/soundpack.py`), the radio plays:

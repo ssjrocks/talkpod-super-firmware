@@ -100,11 +100,14 @@ def main():
     ap.add_argument("--flash-out", help="save the flash image after the run (writes included)")
     ap.add_argument("--signal-at", action="append", default=[], type=int)
     ap.add_argument("--adc", type=lambda v: int(v, 0), default=0x0A20, help="ADC reading (12-bit)")
+    ap.add_argument("--bkirq", action="append", default=[],
+                    help="MS:FLAGS a BK4819 interrupt: REG_0C bit 0, then REG_02 reads FLAGS once (0x0400 tail)")
     ap.add_argument("--fsk-rx", action="append", default=[],
                     help="MS:HEX an FSK packet arrives (sync, a few FIFO words, then complete)")
     ap.add_argument("--serial-in", action="append", default=[], help="MS:HEX bytes to receive")
     ap.add_argument("--serial-out", help="save what the firmware sends, raw")
     ap.add_argument("--voice", action="store_true", help="list the sounds played, with their PWM swing")
+    ap.add_argument("--stack", action="store_true", help="report the deepest stack use (slower)")
     ap.add_argument("--hwver", default="02", help="board tag at 0x08000300 ('' for none)")
     ap.add_argument("--pins", default="", help="log changes of these outputs with --bk, e.g. PC15,PB0,PA13")
     args = ap.parse_args()
@@ -152,6 +155,7 @@ def main():
         words = [data[i] | data[i + 1] << 8 for i in range(0, len(data), 2)]
         fsk.append([int(when), [0x0002] + [0x1000] * 5 + [0x2000], words])
     fsk.sort()
+    irqs = sorted((int(i.split(":")[0]), int(i.split(":")[1], 0)) for i in args.bkirq)
     ports = {"A": GPIOA, "B": GPIOB, "C": GPIOC, "F": GPIOF}
     watched = [(name, ports[name[1]], int(name[2:])) for name in args.pins.split(",") if name]
     flash = bytearray(open(args.flash, "rb").read()) if args.flash else bytearray()
@@ -182,6 +186,8 @@ def main():
 
     def on_block(uc, addr, size, _):
         st["n"] += max(1, size // 2)
+        if args.stack:
+            st["sp_low"] = min(st["sp_low"], uc.reg_read(UC_ARM_REG_SP))
         if args.voice and addr == syms["voice_poll"] & ~1 and voice_interrupt(uc):
             return
         while st["n"] >= (st["ms"] + 1) * INSN_PER_MS:
@@ -239,6 +245,11 @@ def main():
             uc.mem_write(addr, struct.pack("<I", 0xFFFF))
 
     def bk_value(reg):
+        if irqs and irqs[0][0] <= st["ms"]:
+            if reg == 0x0C:
+                return bkregs.get(0x0C, 0) | 1
+            if reg == 0x02:
+                return irqs.pop(0)[1]
         if fsk_tx["done_at"] is not None and st["ms"] >= min(fsk_tx["done_at"], fsk_tx["empty_at"]):
             if reg == 0x0C:
                 return bkregs.get(0x0C, 0) | 1
@@ -432,6 +443,7 @@ def main():
     uc.hook_add(UC_HOOK_MEM_WRITE, on_write, begin=0x40000000, end=0x48001FFF)
     uc.hook_add(UC_HOOK_MEM_UNMAPPED, lambda uc, a, addr, s, v, _: print(f"!! unmapped {addr:#x}") or False)
     sp, reset = struct.unpack_from("<II", image, 0)
+    st["sp_low"] = sp
     uc.reg_write(UC_ARM_REG_SP, sp)
     try:
         uc.emu_start(reset | 1, 0xFFFFFFFF)
@@ -452,6 +464,8 @@ def main():
         print(f"{ms:6d} ms  {line}")
     print(f"BK4819: {sum(1 for x in bklog if x[1] == 'W')} writes, {sum(1 for x in bklog if x[1] == 'R')} reads")
     print(f"ran ~{st['n']} instructions, {st['ms']} simulated ms")
+    if args.stack:
+        print(f"stack: deepest {sp - st['sp_low']} bytes; {st['sp_low'] - syms['_ebss']} bytes left above the static data")
     if args.voice:
         for ms, pwm in sounds:
             body = pwm[VOICE_RAMP:-VOICE_RAMP] or [0]

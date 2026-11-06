@@ -15,6 +15,7 @@ int  radio_monitor(void);
 int  radio_poll(void);                      /* every 20 ms; 1 when the audio opened or closed */
 int  radio_open(void);                      /* audio on: a signal with the right tone, or monitor */
 int  radio_busy(void);                      /* a signal is there, whatever its tone */
+int  radio_carrier(void);                   /* the squelch hears a carrier (not just monitor or level 0) */
 int  radio_rssi_dbm(void);
 void radio_mute(void);
 void radio_sleep(void);                         /* receiver off until the next radio_retune() */                      /* audio off until the next radio_tune() */

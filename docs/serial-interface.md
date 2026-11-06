@@ -79,7 +79,7 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 
 | Command | Reply |
 |---|---|
-| `i` | `fw=TSF ver=1.12 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H`: identifies this firmware, where the splash goes (address + size, hex) and which splash headers it reads |
+| `i` | `fw=TSF ver=1.22 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H`: identifies this firmware, where the splash goes (address + size, hex) and which splash headers it reads |
 | `G` | plays the boot splash now, then `ok`, or `no splash`. The screen returns to what it showed |
 | `E ADDR` | erases the 4 KB sector at ADDR (hex): `ok`, or `refused` outside 0x110000–0x1EFFFF |
 | `W ADDR LEN` | then LEN raw bytes (1–256) and their CRC-16/XMODEM, big-endian. Programs them at ADDR (hex) into erased flash: `ok`, `crc`, `refused` or `timeout` (bytes not all there within 2 s). Wait ~50 ms after the command line before sending the bytes |
@@ -96,6 +96,30 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 | `m HZ N` | retune to HZ (N: 1 = narrow), log squelch bit, RSSI and noise every 5 ms for 200 ms |
 | `v LO HI ST N` | survey LO..HI Hz in ST Hz steps; any byte stops it |
 | `V` | sound player state |
+| `L` | the receiver event log (below), then `END` |
+| `l` | clears the event log: `ok` |
+
+### Event log (1.22+)
+
+The last 128 receiver events, kept in RAM (`src/evlog.c`). Plugging in the cable doesn't restart the
+radio, so after a problem the log of what led to it is still there; switching off loses it. Talkpod
+Manager's **Event log** reads and explains it.
+
+`L` answers `EVLOG NOW COUNT`, then one line per event, oldest first, `MS NAME A V`, then `END`. All
+numbers are hex; MS and NOW are milliseconds since power-on, V a frequency in 10 Hz units unless noted.
+
+| Name | A | V |
+|---|---|---|
+| `BOOT` | 0 | 0 |
+| `TUNE` | modulation (0 FM, 1 AM, 2 SSB) \| narrow << 4 | frequency. Dual watch's two frequencies are logged once, a scan at most every 300 ms |
+| `OPEN` / `CLOSE` | RSSI in dBm + 160 | frequency: the squelch opened or closed |
+| `CARRIER` | 1 found, 0 gone | frequency: a carrier came or went and the squelch didn't change (its tone isn't the channel's) |
+| `HOLD` | the received audio's mutes now: 1 a sound playing, 2 data arriving, 4 a squelch tail | frequency |
+| `IRQ` | 0 | the BK4819's interrupt flags (REG_02) except FIFO-almost-full: 0x0002 FSK sync word, 0x0400 CTCSS / DCS tail found, 0x2000 packet complete |
+| `PKT` | the packet's type byte (100 message, 101 encrypted, 102 receipt) | frequency |
+| `PKT_LOST` | 0 | frequency: a sync word, then no complete packet within 3 s |
+| `TX` | 1 on, 0 off | frequency |
+| `SQUELCH` | level | frequency |
 
 CRC-16/XMODEM: polynomial 0x1021, initial value 0, no reflection, no final XOR.
 

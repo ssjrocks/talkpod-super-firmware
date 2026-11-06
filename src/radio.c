@@ -5,6 +5,8 @@
 #include "bk4819.h"
 #include "board.h"
 #include "spiflash.h"
+#include "evlog.h"
+#include "system.h"
 
 static uint8_t sq_open[10], sq_close[10];   /* RSSI per squelch level (0xF0C0, 0xF0D0) */
 static uint8_t corr_400[16], corr_130[16], corr_200[16], corr_300[16];  /* per-frequency offsets */
@@ -103,7 +105,10 @@ static void set_open(int on)
 
 void radio_audio_hold(int who, int on)
 {
+    uint8_t was = hold;
     hold = (uint8_t)(on ? hold | who : hold & ~who);
+    if (hold != was)
+        evlog(EV_HOLD, hold, freq);
     set_open(open);
 }
 
@@ -117,6 +122,19 @@ void radio_set_tone(int type, uint16_t value, int scramble_type)
 void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
 {
     uint16_t r78, r4f;
+    static uint32_t seen[2], refilled;          /* dual watch's two frequencies aren't logged each time */
+    static uint8_t tokens = 4;                  /* and a scan only every 300 ms, after a burst of 4 */
+    if (millis() - refilled >= 300) {
+        refilled = millis();
+        if (tokens < 4)
+            tokens++;
+    }
+    if (freq_10hz != seen[0] && freq_10hz != seen[1] && tokens) {
+        tokens--;
+        evlog(EV_TUNE, (uint8_t)(am_mode | narrow_bw << 4), freq_10hz);
+        seen[1] = seen[0];
+        seen[0] = freq_10hz;
+    }
     freq = freq_10hz;
     am = (uint8_t)am_mode;
     narrow = (uint8_t)narrow_bw;
@@ -147,6 +165,8 @@ int radio_narrow(void)
 
 void radio_set_squelch(int l)
 {
+    if (l != level)
+        evlog(EV_SQUELCH, (uint8_t)l, freq);
     level = (uint8_t)l;
     radio_tune(freq, am, narrow);
 }
@@ -184,13 +204,23 @@ int radio_poll(void)
     if (muted)
         return 0;
     uint16_t r0c = bk4819_read(0x0C);
+    uint8_t was = carrier;
     carrier = (r0c & 0x0002) != 0;
     int want = monitor || level == 0 || am == MOD_SSB ||   /* SSB has no carrier to open on */
                (carrier && tone_heard_in(r0c));
-    if (want == open)
+    if (want == open) {
+        if (carrier != was)
+            evlog(EV_CARRIER, carrier, freq);
         return 0;
+    }
+    evlog(want ? EV_OPEN : EV_CLOSE, (uint8_t)(bk4819_rssi_dbm() + 160), freq);
     set_open(want);
     return 1;
+}
+
+int radio_carrier(void)
+{
+    return carrier;
 }
 
 int radio_open(void)

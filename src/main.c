@@ -8,6 +8,7 @@
 #include "spiflash.h"
 #include "adc.h"
 #include "radio.h"
+#include "evlog.h"
 #include "roll.h"
 #include "stock.h"
 #include "shell.h"
@@ -45,6 +46,7 @@ int main(void)
     radio_init();
     tx_init();
     ui_init();
+    evlog(EV_BOOT, 0, 0);
 
     uint32_t next = millis();
     for (;;) {

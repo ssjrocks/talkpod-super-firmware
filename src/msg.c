@@ -12,6 +12,7 @@
 #include <string.h>
 #include "msg.h"
 #include "bk4819.h"
+#include "evlog.h"
 #include "radio.h"
 #include "system.h"
 #include "tx.h"
@@ -42,6 +43,8 @@ void msg_init(int m, int r)
 void msg_set_modem(int m)
 {
     modem = (uint8_t)m;
+    if (receiving)
+        radio_audio_hold(HOLD_DATA, 0);         /* rx_end() won't come for a packet cut short here */
     receiving = 0;
     bk4819_fsk_setup(modem, RX_LEN);
 }
@@ -175,6 +178,8 @@ int msg_poll(void)
     if (modem == BK_FSK_OFF)
         return 0;
     uint16_t f = bk4819_irq();
+    if (f & ~0x1000)
+        evlog(EV_IRQ, 0, f);
     if (f & 0x0400)                             /* REG_02: CTCSS / DCS tail found */
         ev |= MSG_EV_TAIL;
     if (f & 0x0002) {                           /* sync word: a packet starts */
@@ -195,11 +200,13 @@ int msg_poll(void)
                 roll_end = burst_end(millis());
                 ev |= MSG_EV_ROLL;
             } else {
+                evlog(EV_PKT, rx_buf[0], radio_freq());
                 ev |= received() | MSG_EV_RX;
             }
         }
         rx_end();
     } else if (receiving && millis() - rx_started > RX_TIMEOUT) {
+        evlog(EV_PKT_LOST, 0, radio_freq());
         rx_end();
         ev |= MSG_EV_RX;
     }
