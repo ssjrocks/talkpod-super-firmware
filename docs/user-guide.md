@@ -67,9 +67,11 @@ a signal and moves on 2 s after it ends. During a scan, 0 locks the current chan
 scan, UP and DOWN set the direction and move on at once, and BACK stops the scan on the channel it is
 on.
 
-**Squelch** levels 1–9 use the radio's own calibration. Level 1 in narrow is stock's level 1.
-Wide FM is 15 points less sensitive to noise than stock, because stock's wide squelch opened on
-static. Each level above 1 needs a stronger signal. Level 0 is always open.
+**Squelch:** level 1 opens on weak stations that are still readable, which stock's level 1 kept
+out; about level 3 is stock's level 1. Each level above needs a cleaner, stronger signal, up to
+level 9 for strong stations only. Level 0 is always open. The levels start from the radio's own
+calibration. The event log shows the noise reading of each signal, and a `WEAK` entry for one the
+squelch kept out (1.23+).
 
 ### Transmitting
 

@@ -181,15 +181,21 @@ The BK4819 synthesises **18–660 MHz and 840–1300 MHz**. Stock's own receive 
 
 - REG_78 = RSSI open << 8 | close; REG_4F = noise close << 8 | open.
 - The chip's decision is **REG_0C bit 1**.
-- **Thresholds:** from the calibration (below), exactly as stock computes them (0x80098f4). This
-  firmware lowers wide-FM noise sensitivity by 15, and each level above 1 tightens noise by 3 and
-  RSSI by 6 raw units (3 dB).
+- **Thresholds:** from the calibration (below), as stock computes them (0x80098f4). Stock keeps one
+  noise threshold for every level (0xF215+band: 0x39, so it closes at 57 and opens at 55) and only
+  raises RSSI per level. Since 1.23 the noise threshold follows the level: narrow FM closes at 68 /
+  opens at 64 at level 1, then 63, 59, 55 ... 33 at level 9 (close; open 4 below). Wide FM is 20
+  lower, never below 24. RSSI: level 1 is 6 dB below stock's calibrated value, each level above adds
+  3 dB.
 - **Open delay:** REG_4E bits 13:11 (stock 5). The bit rises about 40 ms + 5 ms per step after a
   retune onto a signal, 65 ms at stock's setting. RSSI and noise settle within 10–30 ms.
 - **Readings:** RSSI is REG_67 (dBm = raw / 2 − 160); noise indicator REG_65 & 0x7F (10–32 on a
   signal, 50–80 without); glitch REG_63.
 - **No signal on this radio:** RSSI reads −95 to −125 dBm, which is above the calibrated open
   threshold, so the noise criterion is what keeps the squelch closed.
+- **Glitch:** REG_4E low byte is the glitch open threshold (stock 0x15); REG_4D is never written,
+  by stock or this firmware. Its effect on weak signals isn't measured yet: the event log's `WEAK`
+  entries carry the glitch reading.
 
 ### Frequency counter (search)
 

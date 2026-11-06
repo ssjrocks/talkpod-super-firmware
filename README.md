@@ -8,7 +8,7 @@ radio research. It keeps the radio's everyday functions and adds:
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.22**. Builds to about 57 KB of the MCU's 63 KB application flash.
+Version **1.23**. Builds to about 57 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -17,7 +17,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ![Screens from the firmware](docs/ui/screens.png)
 
-*Version 1.22 running in the emulator (`tools/screens.sh`).*
+*Version 1.23 running in the emulator (`tools/screens.sh`).*
 
 > **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
 > 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
@@ -45,7 +45,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 |---|---|
 | FM receive, wide / narrow | working on the radio |
 | AM receive (airband channels automatic, any VFO frequency on request) | built, not yet checked with an AM signal |
-| Squelch 0–9 from the radio's own calibration, widened for wide FM | working |
+| Squelch 0–9 from the radio's own calibration; level 1 opens on weak stations stock muted, level 3 is about stock's level 1 (1.23) | thresholds emulator-checked; on-air pending |
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working |

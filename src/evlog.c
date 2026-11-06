@@ -2,22 +2,29 @@
 #include "debug.h"
 #include "system.h"
 
-/* 128 events of 10 bytes. RAM is the limit: about 2.4 KB were left above the minimum stack. */
+/* 128 events of 14 bytes. RAM is the limit: 3.9 KB were free above the deepest stack measured
+   (emu.py --stack) before the log. */
 #define EVLOG_N 128
 
 static const char *const names[] = {"?", "BOOT", "TUNE", "OPEN", "CLOSE", "HOLD", "IRQ", "PKT",
-                                    "PKT_LOST", "TX", "SQUELCH", "CARRIER"};
+                                    "PKT_LOST", "TX", "SQUELCH", "CARRIER", "WEAK"};
 
 static struct __attribute__((packed)) {
-    uint32_t ms, v;
+    uint32_t ms, v, w;
     uint8_t ev, a;
 } entry[EVLOG_N];
 static uint8_t next, wrapped;
 
 void evlog(uint8_t ev, uint8_t a, uint32_t v)
 {
+    evlog_w(ev, a, v, 0);
+}
+
+void evlog_w(uint8_t ev, uint8_t a, uint32_t v, uint32_t w)
+{
     entry[next].ms = millis();
     entry[next].v = v;
+    entry[next].w = w;
     entry[next].ev = ev;
     entry[next].a = a;
     next = (uint8_t)((next + 1) % EVLOG_N);
@@ -31,7 +38,7 @@ void evlog_clear(void)
     wrapped = 0;
 }
 
-/* "EVLOG now count", then "ms name a v" oldest first, all hex, then "END" */
+/* "EVLOG now count", then "ms name a v [w]" oldest first, all hex (w only where it isn't 0), then "END" */
 void evlog_dump(void)
 {
     int count = wrapped ? EVLOG_N : next;
@@ -49,6 +56,10 @@ void evlog_dump(void)
         debug_hex16(entry[k].a);
         debug_putc(' ');
         debug_hex32(entry[k].v);
+        if (entry[k].w) {
+            debug_putc(' ');
+            debug_hex32(entry[k].w);
+        }
         debug_puts("\r\n");
         debug_flush();
         fwdgt_feed();                           /* 128 lines take 0.7 s */

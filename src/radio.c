@@ -59,16 +59,23 @@ static uint8_t correction(uint32_t f, int *band)
     return corr_130[i > 9 ? 9 : i];
 }
 
-/* Stock thresholds, widened. Measured on this radio (470-490 MHz, no signal): the noise indicator
-   reads 70-80 in narrow mode but 50-79 in wide, where a third of all frequencies sit at the stock
-   threshold (open below 55) and the squelch opens on static. A signal reads 10-32. The RSSI floor
-   (about -95 dBm) is above every stock level (-120..-108 dBm at 476 MHz), so stock's levels barely
-   differ here. So: wide mode lowers the noise threshold by WIDE_NOISE, and each level above 1
-   tightens noise by LEVEL_NOISE and raises the RSSI threshold by LEVEL_RSSI (raw units: 2 per dB).
-   Narrow level 1 stays exactly stock. */
-#define WIDE_NOISE   15
-#define LEVEL_NOISE  3
+/* The chip opens the squelch with the RSSI above REG_78's open value and its noise indicator below
+   REG_4F's (and few glitches). Measured on this radio (470-490 MHz, no signal): noise 70-80 in
+   narrow FM, 50-79 in wide; a strong signal 10-32. The RSSI with no signal (-95..-125 dBm) is often
+   above the calibrated thresholds (stock 0x80098f4: -120..-108 dBm at 476 MHz), so noise decides.
+   Stock keeps one noise threshold for every level (calibration 0xF215 on: 0x39, so it closes at 57
+   and opens at 55), and its level 1 muted weak stations other radios still made out. Here the noise
+   threshold follows the level, from just below the no-signal floor (level 1: closes at 68, opens at
+   64 in narrow FM) to strong signals only (level 9); about level 3 is stock's level 1. Wide FM sits
+   WIDE_NOISE lower, its floor reaching 50. RSSI (raw units, 2 per dB): level 1 is 6 dB below stock's
+   calibrated threshold, so it never keeps out a weak signal; each level above adds LEVEL_RSSI. */
+static const int8_t noise_ofs[10] = {0, 11, 6, 2, -2, -6, -10, -14, -19, -24};
+#define WIDE_NOISE   20
+#define HYST_MIN     4
+#define MIN_CLOSE    24                 /* a strong signal reads 10-32: never ask for less */
 #define LEVEL_RSSI   6
+static uint8_t weak_noise;              /* level 1's close threshold here: a signal at or below it */
+static uint32_t tuned_at, weak_at;
 
 static void squelch_regs(uint16_t *reg78, uint16_t *reg4f)
 {
@@ -79,20 +86,22 @@ static void squelch_regs(uint16_t *reg78, uint16_t *reg4f)
         o -= c;
         cl = cl > c ? cl - c : 0;
     }
-    if (level > 1) {
+    if (level == 1) {
+        o = o > 12 ? o - 12 : 0;
+        cl = cl > 12 ? cl - 12 : 0;
+    } else if (level > 1) {
         o += (level - 1) * LEVEL_RSSI;
         cl += (level - 1) * LEVEL_RSSI;
     }
     *reg78 = (uint16_t)((o > 255 ? 255 : o) << 8 | (cl > 255 ? 255 : cl));
 
-    int n = noise[5 + band] & 0x7F;
-    if (!narrow)
-        n -= WIDE_NOISE;
-    if (level > 1)
-        n -= (level - 1) * LEVEL_NOISE;
-    if (n < 8 + noise[9])
-        n = 8 + noise[9];
-    *reg4f = (uint16_t)(n << 8 | (n - noise[9]));
+    int h = noise[9] > HYST_MIN ? noise[9] : HYST_MIN;
+    int base = (noise[5 + band] & 0x7F) - (narrow ? 0 : WIDE_NOISE);
+    int n = base + noise_ofs[level < 10 ? level : 9];
+    if (n < MIN_CLOSE)
+        n = MIN_CLOSE;
+    weak_noise = (uint8_t)(base + noise_ofs[1]);
+    *reg4f = (uint16_t)(n << 8 | (n - h));
 }
 
 static void set_open(int on)
@@ -139,6 +148,7 @@ void radio_tune(uint32_t freq_10hz, int am_mode, int narrow_bw)
     am = (uint8_t)am_mode;
     narrow = (uint8_t)narrow_bw;
     muted = 0;
+    tuned_at = millis();
     squelch_regs(&r78, &r4f);
     carrier = 0;
     bk4819_rx(freq, narrow || am == MOD_SSB, r78, r4f, am ? BK_TONE_NONE : tone, tone_value, am ? 0 : scramble);
@@ -199,6 +209,27 @@ static int tone_heard(void)
     return tone_heard_in(bk4819_read(0x0C));
 }
 
+/* RSSI raw, glitch and noise readings in one word, as the event log keeps them (src/evlog.h) */
+static uint32_t readings(void)
+{
+    return (bk4819_read(0x67) & 0x1FFu) | (uint32_t)(bk4819_read(0x63) & 0xFF) << 16 |
+           (uint32_t)(bk4819_read(0x65) & 0x7F) << 24;
+}
+
+/* A signal the squelch keeps out: the squelch closed, but the noise indicator at or below level 1's
+   threshold, well under its no-signal 70-80. Logged with its readings at most every 3 s, so the log
+   shows what a weak station looked like and which of noise, RSSI and glitches stopped it. */
+static void weak_check(void)
+{
+    if (!level || am || millis() - tuned_at < 50 || (weak_at && millis() - weak_at < 3000))
+        return;
+    uint8_t n = bk4819_read(0x65) & 0x7F;
+    if (n > weak_noise)
+        return;
+    weak_at = millis() | 1;
+    evlog_w(EV_WEAK, n, freq, readings());
+}
+
 int radio_poll(void)
 {
     if (muted)
@@ -211,9 +242,11 @@ int radio_poll(void)
     if (want == open) {
         if (carrier != was)
             evlog(EV_CARRIER, carrier, freq);
+        if (!open)
+            weak_check();
         return 0;
     }
-    evlog(want ? EV_OPEN : EV_CLOSE, (uint8_t)(bk4819_rssi_dbm() + 160), freq);
+    evlog_w(want ? EV_OPEN : EV_CLOSE, (uint8_t)(bk4819_rssi_dbm() + 160), freq, readings());
     set_open(want);
     return 1;
 }
