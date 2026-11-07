@@ -255,6 +255,8 @@ goes with it, so repeaters let it through.
   between letters, seven between words. The carrier comes up half a second before the first letter,
   for receivers' squelch and repeaters.
 - **Letters:** A–Z, 0–9 and `. , ? ' ! / ( ) & : ; = + - _ " @`; anything else is skipped.
+- The exact signal (tone, timing, what comes before and after) is in [morse.md](morse.md), for
+  writing a decoder.
 - While it sends, the letter going out is highlighted. **BACK** stops it at once; **PTT** stops it and
   transmits your voice. Roger and the squelch tail follow it as after voice, and the TX timeout
   applies.
