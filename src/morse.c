@@ -2,7 +2,8 @@
  * channel hears it. Standard timing: a dit is one unit of 1200 / WPM ms (PARIS), a dah three, one unit
  * between elements, three between letters, seven between words. The carrier comes up LEAD_MS before
  * the first letter, for receivers' squelch and repeaters; the channel's CTCSS / DCS goes out as with
- * voice. The tone is keyed from the main loop against absolute times, so a slow screen update stretches
+ * voice, but Roger and Tail cut are for voice only: the carrier drops TAIL_MS after the last letter.
+ * docs/morse.md describes the signal for decoders. The tone is keyed from the main loop against absolute times, so a slow screen update stretches
  * one element at most and the timing doesn't drift. */
 #include "morse.h"
 #include "bk4819.h"
@@ -52,6 +53,26 @@ static int elements(uint8_t c)
         n++;
     }
     return n;
+}
+
+uint32_t morse_ms(const char *t, int wpm)
+{
+    uint32_t units = 0;
+    int sent = 0, space = 0;
+    for (int i = 0; t[i]; i++) {
+        uint8_t c = morse_code(t[i]);
+        if (!c) {
+            space |= t[i] == ' ';
+            continue;
+        }
+        if (space && sent)
+            units += 4;                         /* the rest of a word gap */
+        space = 0;
+        sent = 1;
+        for (int n = elements(c); n--;)
+            units += (c >> n & 1 ? 3u : 1u) + (n ? 1u : 3u);   /* the element, then its gap */
+    }
+    return LEAD_MS + units * (1200u / (uint32_t)(wpm > 0 ? wpm : MORSE_WPM)) + TAIL_MS;
 }
 
 int morse_start(const char *t, uint32_t freq, int narrow, int low_power, int tone, uint16_t tone_value, int wpm)
@@ -136,7 +157,7 @@ void morse_poll(void)
     case TAIL:
         state = IDLE;
         bk4819_tone_tx(0);
-        tx_end();                               /* Roger and the squelch tail, as after voice */
+        tx_stop();                              /* no Roger, no squelch tail: those are for voice */
         break;
     }
 }

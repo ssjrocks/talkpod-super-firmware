@@ -254,12 +254,14 @@ goes with it, so repeaters let it through.
 - **Timing:** standard (PARIS): a dah is three dits, one dit between the elements of a letter, three
   between letters, seven between words. The carrier comes up half a second before the first letter,
   for receivers' squelch and repeaters.
-- **Letters:** A–Z, 0–9 and `. , ? ' ! / ( ) & : ; = + - _ " @`; anything else is skipped.
+- **Letters:** A–Z, 0–9 and `. , ? ' ! / ( ) & : ; = + - _ " @`; anything else is skipped. Up to
+  87 characters; the typing box scrolls.
 - The exact signal (tone, timing, what comes before and after) is in [morse.md](morse.md), for
   writing a decoder.
 - While it sends, the letter going out is highlighted. **BACK** stops it at once; **PTT** stops it and
-  transmits your voice. Roger and the squelch tail follow it as after voice, and the TX timeout
-  applies.
+  transmits your voice.
+- **Roger** and **Tail cut** are for voice: Morse ends without them. A message that would run past
+  the **TX timeout** isn't sent; the radio says how many seconds it needs.
 
 ## Pager (long 8)
 

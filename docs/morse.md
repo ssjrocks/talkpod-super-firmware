@@ -1,4 +1,4 @@
-# Morse code output (1.24+)
+# Morse code output (1.25+)
 
 What the Morse screen transmits, exactly enough to write a decoder for it. The source is
 [`src/morse.c`](../src/morse.c). The timing below was measured in the emulator (`tools/emu.py`); the
@@ -26,14 +26,14 @@ stays up for the whole message, and only the audio tone switches.
 2. **500 ms of carrier with no tone**, so receivers' squelch and repeaters open.
 3. **The message:** tone on/off per the timing below.
 4. **After the last element:** 3 units of silence plus 150 ms.
-5. **Roger**, if set in the radio's menu (the same as after a voice transmission):
-   - **Beep:** 1000 Hz for 80 ms, then 850 Hz for 80 ms;
-   - **TONE1200:** a fixed data burst of about 0.2 s (1200 bit/s FSK);
-   - **Off:** nothing.
-6. **Tail cut** (STE), if set: about 300 ms of a 55 Hz tone, or a CTCSS phase reversal / DCS turn-off
-   code on tone-squelch channels.
-7. **Key-down:** the carrier goes. A receiver without tail elimination plays a short burst of noise
-   here.
+5. **Key-down:** the carrier goes. A receiver plays a short burst of noise here as its squelch
+   closes.
+
+There is **no Roger and no squelch tail**, whatever the menu says: those settings are for voice
+(1.25+; 1.24 sent them after Morse too).
+
+So a message of N units takes `500 + N × unit + 150` ms from key-up to key-down. The radio refuses
+to send one that would run past its TX timeout, and says how many seconds it needs.
 
 Throughout, if the channel has **CTCSS** (67–254.1 Hz) or **DCS** (134.4 bit/s), that sub-audible signal
 is on the carrier the whole time. Filter below about 300 Hz and it doesn't disturb a 700 Hz detector.
@@ -78,7 +78,7 @@ P  .--.   on 40, off 40, on 120, off 40, on 120, off 40, on 40,  off 120
 A  .-     on 40, off 40, on 120,                                 off 120
 R  .-.    on 40, off 40, on 120, off 40, on 40,                  off 120
 I  ..     on 40, off 40, on 40,                                  off 120
-S  ...    on 40, off 40, on 40, off 40, on 40,                   then 120 + 150 ms to Roger / key-down
+S  ...    on 40, off 40, on 40, off 40, on 40,                   then 120 + 150 ms to key-down
 ```
 
 ## Characters
@@ -99,7 +99,7 @@ make none.
 | `(` `-.--.` | `)` `-.--.-` | `&` `.-...` | `:` `---...` | `;` `-.-.-.` | `=` `-...-` |
 | `+` `.-.-.` | `-` `-....-` | `_` `..--.-` | `"` `.-..-.` | `@` `.--.-.` | |
 
-There are no prosigns (AR, SK...), and `$` isn't sent. A message is at most 29 characters.
+There are no prosigns (AR, SK...), and `$` isn't sent. A message is at most 87 characters.
 
 ## Decoding it
 
@@ -118,8 +118,7 @@ A decoder that works on this signal:
      word space.
 5. **Ignore:**
    - energy below about 300 Hz (CTCSS, DCS, the 55 Hz tail);
-   - the Roger beep at 1000 / 850 Hz, which a 700 Hz filter rejects, and the TONE1200 burst;
    - the noise burst at key-down.
-   The message is complete when the carrier drops or the Roger appears.
+   The message is complete when the carrier drops.
 6. **Test:** send known texts (PARIS, the alphabet, digits, punctuation, text with several spaces) at
    5, 30, 35 and 40 WPM, and compare the decoded text and the measured unit with the tables above.

@@ -560,8 +560,18 @@ static void draw_about(void)
 static const char *const key_chars[10] = {
     " 0", ".,?!-'/@1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
 };
-static char comp[MSG_TEXT + 1];
+static char comp[MORSE_TEXT + 1];        /* what is typed: Messages, APRS, Pager, Morse */
 static uint8_t comp_len, tap_key = 0xFF, tap_n, tap_shown, lower, msg_scroll;
+static uint8_t comp_max = MSG_TEXT;     /* the open screen's limit */
+
+static void compose_for(int max)        /* a screen opens with its limit; a longer text is cut to it */
+{
+    comp_max = (uint8_t)max;
+    if (comp_len > max) {
+        comp_len = (uint8_t)max;
+        comp[max] = 0;
+    }
+}
 static uint32_t tap_at;
 
 static int tap_pending(void)
@@ -610,9 +620,11 @@ static void draw_msg_history(void)
 static void draw_compose(const char *hint)     /* the messages screen's own hint when 0 */
 {
     char line[MSG_LINE + 1], s[24];
+    int cur = (comp_len < comp_max ? comp_len : comp_len - 1) / MSG_LINE;     /* the cursor's line */
+    int top = cur > 0 ? cur - 1 : 0;            /* two lines show, the cursor's the lower one */
     lcd_fill(0, MSG_BOTTOM, LCD_W, LCD_H - MSG_BOTTOM, C_PANEL);
     for (int l = 0; l < 2; l++) {
-        int from = l * MSG_LINE, n = comp_len - from;
+        int from = (top + l) * MSG_LINE, n = comp_len - from;
         if (n <= 0)
             break;
         memcpy(line, comp + from, (size_t)(n > MSG_LINE ? MSG_LINE : n));
@@ -620,18 +632,19 @@ static void draw_compose(const char *hint)     /* the messages screen's own hint
         gfx_text(1, MSG_BOTTOM + 2 + l * 10, &font_6x10, line, C_TEXT, C_PANEL);
     }
     tap_shown = (uint8_t)tap_pending();
-    int last = comp_len - 1, cx = 1 + (comp_len % MSG_LINE) * 6, cy = MSG_BOTTOM + 2 + comp_len / MSG_LINE * 10;
+    int last = comp_len - 1, cx = 1 + (comp_len % MSG_LINE) * 6;
+    int cy = MSG_BOTTOM + 2 + (comp_len / MSG_LINE - top) * 10;
     if (tap_shown && last >= 0)                 /* the letter still cycling */
-        gfx_text(1 + (last % MSG_LINE) * 6, MSG_BOTTOM + 2 + last / MSG_LINE * 10, &font_6x10,
+        gfx_text(1 + (last % MSG_LINE) * 6, MSG_BOTTOM + 2 + (last / MSG_LINE - top) * 10, &font_6x10,
                  (char[]){comp[last], 0}, C_BG, C_AMBER);
-    else if (comp_len < MSG_TEXT)
+    else if (comp_len < comp_max)
         lcd_fill(cx, cy + 9, 5, 1, C_CYAN);    /* cursor */
     if ((int32_t)(toast_until - millis()) > 0) {
         gfx_text(1, LCD_H - 9, &font_5x8, toast, C_AMBER, C_PANEL);
         return;
     }
     if (!hint) {
-        put_str(put_dec(put_str(put_dec(put_str(s, lower ? "abc " : "ABC "), comp_len), "/"), MSG_TEXT),
+        put_str(put_dec(put_str(put_dec(put_str(s, lower ? "abc " : "ABC "), comp_len), "/"), comp_max),
                 comp_len ? "  MENU send" : "  BACK exit");
         hint = s;
     }
@@ -652,6 +665,7 @@ static void draw_msg(void)
 
 static void open_messages(void)
 {
+    compose_for(MSG_TEXT);
     screen = SCR_MSG;
     msg_read_all();
     msg_scroll = 0;
@@ -815,6 +829,7 @@ static void draw_aprs(void)
 
 static void open_aprs(void)
 {
+    compose_for(MSG_TEXT);
     screen = SCR_APRS;
     aprs_read_all();
     aprs_sel = -1;
@@ -868,6 +883,7 @@ static void draw_pager(void)
 
 static void open_pager(void)
 {
+    compose_for(MSG_TEXT);
     screen = SCR_PAGER;
     pager_sel = -1;
     draw_pager();
@@ -2174,7 +2190,7 @@ static void key_menu(const key_event_t *ev)
 
 /* ---- Morse (long 9): what is typed goes out in Morse on the selected slot --------------------- */
 
-static char morse_sent[MSG_TEXT + 1];
+static char morse_sent[MORSE_TEXT + 1];
 static uint8_t morse_on;                /* a transmission this screen started is running */
 static int morse_shown = -1;            /* the character drawn as being sent */
 #define MORSE_Y 24                      /* the sent text's first line */
@@ -2225,6 +2241,7 @@ static void draw_morse(void)
 
 static void open_morse(void)
 {
+    compose_for(MORSE_TEXT);
     screen = SCR_MORSE;
     draw_morse();
 }
@@ -2265,6 +2282,14 @@ static void send_morse(void)
         draw_morse_compose();
         return;
     }
+    uint32_t need = (morse_ms(comp, morse_wpm) + 999) / 1000, limit = tot_s[stock.tot < 6 ? stock.tot : 0];
+    if (limit && need > limit) {                /* the time-out would cut it off */
+        char t[24];
+        put_str(put_dec(put_str(put_dec(t, need), " s > TX timeout "), limit), " s");
+        show_toast(t);
+        draw_morse_compose();
+        return;
+    }
     stop_activity();
     voice_stop();
     watch_pause(1);
@@ -2285,7 +2310,7 @@ static void send_morse(void)
 
 static void key_morse(const key_event_t *ev)
 {
-    if (!morse_on && text_key(ev, comp, &comp_len, MSG_TEXT, E_TEXT)) {
+    if (!morse_on && text_key(ev, comp, &comp_len, MORSE_TEXT, E_TEXT)) {
         draw_morse_compose();
         return;
     }
