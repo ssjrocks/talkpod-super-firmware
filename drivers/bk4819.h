@@ -25,6 +25,7 @@ void     bk4819_ssb(int on);                    /* after bk4819_rx(): IF and AFC
 int      bk4819_rssi_dbm(void);
 void     bk4819_gpio(uint8_t mask, int on);     /* the BK4819's own GPIO pins (REG_33) */
 void     bk4819_beep(int on, uint16_t hz);      /* local tone; after it, call bk4819_rx() again */
+void     bk4819_tone_key(int on);               /* in bk4819_tone_tx(1): the tone on or off, carrier kept */
 int      bk4819_squelch_open(void);             /* the chip's squelch decision (REG_0C bit 1) */
 void     bk4819_search(int on);                 /* frequency counter on / off */
 int      bk4819_search_result(uint32_t *freq_10hz);

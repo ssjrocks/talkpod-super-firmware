@@ -30,7 +30,7 @@ in the amber.
 
 | Key | Short press | Long press (0.6 s) |
 |---|---|---|
-| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 7 **APRS** · 8 **Pager** |
+| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 7 **APRS** · 8 **Pager** · 9 **Morse** |
 | MENU | confirm what was typed, otherwise open the menu | switch the selected slot between channel and VFO |
 | FM | FM, AM, SSB (VFO slot) | key lock on / off |
 | A/B | select the other slot | |
@@ -140,6 +140,7 @@ has, Write sends your changes. Side key functions DTMF and Remote aren't there a
 | Messages | opens the Messages screen (shows how many are new) |
 | APRS | opens the APRS screen |
 | Pager | opens the Pager screen |
+| Morse | opens the Morse screen (shows its speed) |
 | Squelch | 0–9 |
 | Step | 2.5, 5, 6.25, 10, 12.5, 25, 100 kHz, 1 MHz, then 1 kHz, 100 Hz, 10 Hz for SSB |
 | Bandwidth | wide / narrow (VFO slot; a channel has its own) |
@@ -241,6 +242,22 @@ Set **APRS call** in the menu first; nothing is sent without it.
 Receiving APRS is **experimental**. See [data-modes.md](data-modes.md#aprs): the BK4819 has no
 Bell 202 demodulator, so the firmware borrows its FFSK one. APRS listening runs only while this
 screen is open.
+
+## Morse (long 9)
+
+Type a text as on the Messages screen; MENU sends it in Morse code on the selected slot, as a 700 Hz
+tone on the FM transmitter (MCW), so any FM radio on the channel hears it. The channel's CTCSS / DCS
+goes with it, so repeaters let it through.
+
+- **Speed:** 30 words per minute to start with, about a professional operator's speed: a dit is
+  40 ms. UP and DOWN change it from 5 to 40 WPM, until the radio is switched off.
+- **Timing:** standard (PARIS): a dah is three dits, one dit between the elements of a letter, three
+  between letters, seven between words. The carrier comes up half a second before the first letter,
+  for receivers' squelch and repeaters.
+- **Letters:** A–Z, 0–9 and `. , ? ' ! / ( ) & : ; = + - _ " @`; anything else is skipped.
+- While it sends, the letter going out is highlighted. **BACK** stops it at once; **PTT** stops it and
+  transmits your voice. Roger and the squelch tail follow it as after voice, and the TX timeout
+  applies.
 
 ## Pager (long 8)
 

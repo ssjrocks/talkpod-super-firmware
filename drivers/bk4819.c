@@ -561,6 +561,11 @@ void bk4819_roger_data(void)
     bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) & ~(1u << 2)));
 }
 
+void bk4819_tone_key(int on)
+{
+    bk4819_write(0x70, (uint16_t)((on ? 0x8000 : 0) | 66u << 8));     /* tone 1 at bk4819_tone_tx's gain */
+}
+
 void bk4819_tone_hz(uint16_t hz)
 {
     bk4819_write(0x71, (uint16_t)(((uint32_t)hz * 103244U + 5000) / 10000));

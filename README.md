@@ -5,10 +5,11 @@ radio research. It keeps the radio's everyday functions and adds:
 - a new two-slot user interface;
 - text messaging compatible with UV-K5 radios;
 - APRS and POCSAG paging;
+- Morse code sending;
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.23**. Builds to about 57 KB of the MCU's 63 KB application flash.
+Version **1.24**. Builds to about 59 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -17,7 +18,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ![Screens from the firmware](docs/ui/screens.png)
 
-*Version 1.23 running in the emulator (`tools/screens.sh`).*
+*Version 1.24 running in the emulator (`tools/screens.sh`).*
 
 > **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
 > 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
@@ -63,6 +64,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | emulator-tested; on-air test pending |
 | APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
+| Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start | emulator-tested (timing exact to the ms); on-air test pending |
 | Animated boot splash, changeable over the serial cable | working |
 | Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working on the radio |
 | Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | emulator-tested; on-air test pending |

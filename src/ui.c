@@ -28,6 +28,7 @@
 #include "tx.h"
 #include "msg.h"
 #include "aprs.h"
+#include "morse.h"
 #include "pocsag.h"
 #include "roll.h"
 #include "stock.h"
@@ -48,7 +49,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM, SCR_MORSE };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000, 100, 10, 1};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M",
@@ -62,6 +63,7 @@ static uint8_t screen, step = 4, light_on = 1, locked, searching;
 static const uint16_t tot_s[] = {0, 30, 60, 120, 240, 480};     /* TX time-out, as stock; 0 = none */
 static const char *const tot_names[] = {"Off", "30 s", "60 s", "2 min", "4 min", "8 min"};
 static uint8_t tx_timed_out;
+static uint8_t morse_wpm = MORSE_WPM;   /* the Morse screen's speed, until power-off */
 static uint8_t boot_prompt;             /* say the mode when the power-on sound ends */
 static uint32_t next_tx_draw;
 static uint32_t next_battery_warn;
@@ -416,12 +418,12 @@ static const stock_item_t stock_items[] = {
 };
 #define STOCK_ITEMS 22
 
-enum { M_FSCAN, M_MESSAGES, M_APRS, M_PAGER, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
+enum { M_FSCAN, M_MESSAGES, M_APRS, M_PAGER, M_MORSE, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
        M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
        M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
        M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS, M_COUNT };
 static const char *const menu_names[M_STOCK] = {
-    "Freq scanner", "Messages", "APRS", "Pager", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
+    "Freq scanner", "Messages", "APRS", "Pager", "Morse", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
     "Backlight", "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon",
     "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
 };
@@ -475,6 +477,7 @@ static void menu_value(int item, char *s)
         s[9] = 0;
         break;
     case M_PAGER_RIC:  put_dec(s, pager_cfg.ric); break;
+    case M_MORSE:      put_str(put_dec(s, morse_wpm), " WPM"); break;
     case M_PAGER_SPEED: put_dec(s, pager_bauds[pager_cfg.speed]); break;
     case M_PAGER_INVERT: put_str(s, pager_cfg.invert ? "On" : "Off"); break;
     case M_ROLL_KEY:   put_str(s, roll_cfg.key[0] ? "set" : "not set"); break;
@@ -932,6 +935,8 @@ static uint8_t fs_field, fs_len;        /* 0 From, 1 To, 2 Step, 3 Mode; digits 
 static char fs_digits[8];
 
 static void stop_activity(void);
+static void open_morse(void);
+static void draw_morse(void);
 
 static uint32_t fs_value(int field)
 {
@@ -1197,6 +1202,8 @@ static void redraw(void)
         draw_fscan();
     else if (screen == SCR_FM)
         draw_fm();
+    else if (screen == SCR_MORSE)
+        draw_morse();
     else
         draw_about();
 }
@@ -1356,6 +1363,9 @@ static void long_press(int key)
         return;
     case KEY_8:
         open_pager();
+        return;
+    case KEY_9:
+        open_morse();
         return;
     default:
         return;
@@ -2133,6 +2143,8 @@ static void key_menu(const key_event_t *ev)
             open_aprs();
         } else if (menu_pos == M_PAGER) {
             open_pager();
+        } else if (menu_pos == M_MORSE) {
+            open_morse();
         } else if (menu_pos == M_APRS_CALL || menu_pos == M_APRS_TEXT || menu_pos == M_PAGER_RIC ||
                    menu_pos == M_ROLL_KEY) {
             open_edit(menu_pos == M_APRS_CALL ? E_CALL : menu_pos == M_PAGER_RIC ? E_RIC
@@ -2155,6 +2167,158 @@ static void key_menu(const key_event_t *ev)
             draw_main();
         }
         break;
+    default:
+        break;
+    }
+}
+
+/* ---- Morse (long 9): what is typed goes out in Morse on the selected slot --------------------- */
+
+static char morse_sent[MSG_TEXT + 1];
+static uint8_t morse_on;                /* a transmission this screen started is running */
+static int morse_shown = -1;            /* the character drawn as being sent */
+#define MORSE_Y 24                      /* the sent text's first line */
+
+static void morse_char(int i, uint16_t color)
+{
+    if (i >= 0 && morse_sent[i])
+        gfx_text(1 + (i % MSG_LINE) * 6, MORSE_Y + (i / MSG_LINE) * 10, &font_6x10, (char[]){morse_sent[i], 0},
+                 color, C_BG);
+}
+
+static void draw_morse_header(void)
+{
+    char s[10];
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "Morse", C_TEXT, C_PANEL);
+    put_str(put_dec(s, morse_wpm), " WPM");
+    const char *r = morse_on ? "sending" : s;
+    gfx_text(124 - gfx_text_width(&font_5x8, r), 4, &font_5x8, r, morse_on ? C_RED : C_DIM, C_PANEL);
+}
+
+static void draw_morse_text(void)
+{
+    lcd_fill(0, 14, LCD_W, MSG_BOTTOM - 14, C_BG);
+    if (!morse_sent[0]) {
+        gfx_text(4, 30, &font_6x10, "Type below; MENU", C_DIM, C_BG);
+        gfx_text(4, 46, &font_5x8, "sends it in Morse on the", C_DIM, C_BG);
+        gfx_text(4, 56, &font_5x8, "selected slot.", C_DIM, C_BG);
+        gfx_text(4, 70, &font_5x8, "UP / DOWN: speed", C_DIM, C_BG);
+        return;
+    }
+    morse_shown = morse_on ? morse_pos() : -1;
+    for (int i = 0; morse_sent[i]; i++)
+        morse_char(i, !morse_on ? C_CYAN : i < morse_shown ? C_DIM : i == morse_shown ? C_AMBER : C_TEXT);
+}
+
+static void draw_morse_compose(void)
+{
+    draw_compose(morse_on ? "BACK stops it" : 0);
+}
+
+static void draw_morse(void)
+{
+    draw_morse_header();
+    draw_morse_text();
+    draw_morse_compose();
+}
+
+static void open_morse(void)
+{
+    screen = SCR_MORSE;
+    draw_morse();
+}
+
+/* the transmission ended, or was stopped: listen again */
+static void morse_done(void)
+{
+    morse_on = 0;
+    if (tx_timed_out) {
+        tx_timed_out = 0;
+        show_toast("TX time-out");
+    }
+    watch_pause(0);
+}
+
+/* as often as the UI ticks: the letter being sent, and the end */
+static void morse_tick(void)
+{
+    if (!morse_on)
+        return;
+    if (!morse_active()) {
+        morse_done();
+        debug_puts("Morse sent\r\n");
+        if (screen == SCR_MORSE)
+            draw_morse();
+    } else if (screen == SCR_MORSE && morse_pos() != morse_shown) {
+        morse_char(morse_shown, C_DIM);         /* two letters only: the keying waits on the screen */
+        morse_shown = morse_pos();
+        morse_char(morse_shown, C_AMBER);
+    }
+}
+
+static void send_morse(void)
+{
+    slot_t *s = watch_slot(watch_selected());
+    if (!s->tx || s->am == MOD_SSB) {
+        show_toast(s->tx ? "SSB is receive only" : "TX off on this channel");
+        draw_morse_compose();
+        return;
+    }
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    tap_key = 0xFF;
+    memcpy(morse_sent, comp, (size_t)comp_len + 1);
+    int r = morse_start(morse_sent, s->tx, s->narrow, s->low_power, s->tx_tone.type, s->tx_tone.value, morse_wpm);
+    if (r > 0) {
+        morse_on = 1;
+        comp_len = 0;
+        comp[0] = 0;
+        debug_puts("Morse sending\r\n");
+    } else {
+        watch_pause(0);
+        show_toast(r < 0 ? "TX not allowed here" : "no Morse letters in it");
+    }
+    draw_morse();
+}
+
+static void key_morse(const key_event_t *ev)
+{
+    if (!morse_on && text_key(ev, comp, &comp_len, MSG_TEXT, E_TEXT)) {
+        draw_morse_compose();
+        return;
+    }
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    switch (ev->key) {
+    case KEY_MENU:
+        if (comp_len && !morse_on)
+            send_morse();
+        break;
+    case KEY_BACK:
+        snd(SND_CANCEL);
+        tap_key = 0xFF;
+        if (morse_on) {
+            morse_stop();
+            morse_done();
+            show_toast("stopped");
+            draw_morse();
+        } else if (comp_len) {
+            comp[--comp_len] = 0;
+            draw_morse_compose();
+        } else {
+            screen = SCR_MAIN;
+            draw_main();
+        }
+        break;
+    case KEY_UP:
+    case KEY_DOWN: {
+        int w = morse_wpm + (ev->key == KEY_UP ? 5 : -5);
+        morse_wpm = (uint8_t)(w < 5 ? 5 : w > 40 ? 40 : w);
+        draw_morse_header();
+        break;
+    }
     default:
         break;
     }
@@ -2346,6 +2510,10 @@ void ui_key(const key_event_t *ev)
     last_key = millis();
     if (ev->key == KEY_PTT) {               /* PTT always works: any screen, keys locked, display off */
         apply_backlight(1);
+        if (morse_on) {                     /* it stops Morse being sent, then talks */
+            morse_stop();
+            morse_done();
+        }
         if (screen == SCR_FM)
             close_fm();
         if (screen != SCR_MAIN) {
@@ -2390,6 +2558,8 @@ void ui_key(const key_event_t *ev)
         key_fscan(ev);
     else if (screen == SCR_FM)
         key_fm(ev);
+    else if (screen == SCR_MORSE)
+        key_morse(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();
@@ -2645,7 +2815,9 @@ void ui_tick(void)
             draw_hint();
         }
     }
-    int typing = screen == SCR_MSG || screen == SCR_APRS || screen == SCR_EDIT || screen == SCR_PAGER;
+    morse_tick();
+    int typing = screen == SCR_MSG || screen == SCR_APRS || screen == SCR_EDIT || screen == SCR_PAGER ||
+                 screen == SCR_MORSE;
     if (typing && ((tap_shown && !tap_pending()) ||          /* the cycling letter is settled */
                    (toast_until && (int32_t)(now - toast_until) >= 0))) {
         toast_until = 0;
@@ -2655,6 +2827,8 @@ void ui_tick(void)
             draw_aprs_compose();
         else if (screen == SCR_PAGER)
             draw_pager();
+        else if (screen == SCR_MORSE)
+            draw_morse_compose();
         else
             draw_edit_field();
     }
