@@ -70,7 +70,7 @@ Each release was tested on the radio.
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working |
-| FM broadcast radio (BK1080) | **known bug:** opens but plays no sound on the radio |
+| FM broadcast radio (BK1080) | working |
 | SSB receive on a VFO slot, with 1 kHz to 10 Hz steps, for both sidebands | working |
 | Stock's ENCRY, a private code squelch | working |
 | Frequency scanner: a typed range and step, in FM, AM or Auto (AM on airband and 27 MHz CB), stops into VFO mode | working |
