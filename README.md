@@ -1,11 +1,29 @@
 # Talkpod Super Firmware
 
+> [!WARNING]
+> **Check the law before you install or use this firmware.**
+> - Only transmit on frequencies you are licensed or otherwise permitted to use, and only with the
+>   power, bandwidth and modes that permission allows.
+> - This firmware removes the radio's factory band limits. It can transmit across 18–660 and
+>   840–1300 MHz; only 108–138 MHz (aviation) and 406.0–406.1 MHz (distress beacons) are blocked.
+>   Transmitting where you aren't permitted can interfere with emergency, aviation and other services,
+>   and is illegal.
+> - In some jurisdictions radio equipment must keep its type approval (certification). Replacing the
+>   radio's firmware can void it, and merely having this firmware running on a radio may be illegal,
+>   even if you never transmit. Check your local rules (for example ACMA in Australia, the FCC in the
+>   US, Ofcom in the UK) before installing it.
+> - It is provided for research, as is, without any warranty. You are responsible for how you use it.
+
 Replacement firmware for the **Talkpod A36SE** (sold as the A36plus 5 W), written from scratch for
-radio research. It keeps the radio's everyday functions and adds:
-- a new two-slot user interface;
-- text messaging compatible with UV-K5 radios;
-- APRS and POCSAG paging;
-- Morse code sending;
+radio research. It keeps the radio's everyday functions, with the stock menu settings, and adds:
+- a two-slot user interface with dual watch;
+- a frequency scanner over any range, in FM, AM or Auto (AM on airband and 27 MHz CB);
+- SSB receive on a VFO slot;
+- text messaging compatible with UV-K5 radios, APRS and POCSAG paging;
+- Morse code sending, 5–40 words per minute;
+- texts sent before, recalled on any typing screen (hold FM) and kept through power-off;
+- squelch levels from weak stations (level 1) to strong ones only (level 9);
+- a receiver event log, read and explained by [Talkpod Manager](https://github.com/ssjrocks/talkpod-manager);
 - a wide transmit range;
 - an animated boot splash.
 
@@ -20,14 +38,10 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 *Version 1.26 running in the emulator (`tools/screens.sh`).*
 
-> **Transmitting.** This firmware transmits wherever the BK4819 can synthesise: 18–660 and
-> 840–1300 MHz. Two ranges are hard-blocked in code (`src/tx.c`):
-> - **108–138 MHz** (aviation)
-> - **406.0–406.1 MHz** (distress beacons)
->
-> Everything else is up to the operator and their licence. It was developed with the radio in a
-> shielded enclosure on a dummy load. The transmit power calibration is the radio's own, but
-> spectral purity off the radio's designed bands has not been measured.
+> **Transmit range in detail.** The firmware transmits wherever the BK4819 can synthesise, except
+> the two ranges hard-blocked in code (`src/tx.c`). It was developed with the radio in a shielded
+> enclosure on a dummy load. The transmit power calibration is the radio's own, but spectral purity
+> off the radio's designed bands has not been measured.
 
 ## Contents
 
@@ -37,7 +51,8 @@ and a channel scan. The splash is any animation you send it; this one is the own
 | [docs/hardware.md](docs/hardware.md) | Everything learned about the radio: MCU, bootloader, pins, BK4819, RF switching, calibration, flash map, display, keys, audio |
 | [docs/stock-firmware.md](docs/stock-firmware.md) | Reverse-engineering notes on the stock V1.22 Super firmware, with addresses |
 | [docs/data-modes.md](docs/data-modes.md) | The BK4819 FSK modem as used here; UV-K5 messenger, APRS and POCSAG formats and implementations |
-| [docs/serial-interface.md](docs/serial-interface.md) | Programming cable, flashing protocol, `.kdhx` format, the firmware's serial shell, **the splash format and how Talkpod Manager uploads it** |
+| [docs/serial-interface.md](docs/serial-interface.md) | Programming cable, flashing protocol, `.kdhx` format, the firmware's serial shell and event log, **the splash format and how Talkpod Manager uploads it** |
+| [docs/morse.md](docs/morse.md) | The Morse signal exactly, for writing a decoder |
 | [docs/development.md](docs/development.md) | Source layout, building, the Unicorn emulator and other tools, what is verified on hardware |
 
 ## Features
@@ -47,16 +62,19 @@ and a channel scan. The splash is any animation you send it; this one is the own
 | FM receive, wide / narrow | working on the radio |
 | AM receive (airband channels automatic, any VFO frequency on request) | built, not yet checked with an AM signal |
 | Squelch 0–9 from the radio's own calibration; level 1 opens on weak stations stock muted, level 3 is about stock's level 1 (1.23) | thresholds emulator-checked; on-air pending |
+| Received audio at the radio's calibrated level, as stock (1.21; before, it clipped at any volume) | emulator-checked against stock's own code on the radio's calibration; on-air pending |
+| Signal meter: 16 segments of 6 dB, −125 to −29 dBm (1.21) | emulator-tested |
+| Tail cut on receive: the mute ends with the carrier, or half a second at most (1.22; before, tone bursts could leave the audio muted until PTT) | the stuck mute reproduced in the emulator on 1.21 and gone on 1.22; on-air pending |
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working |
-| FM broadcast radio (BK1080) | emulator-tested; on-air test pending |
+| FM broadcast radio (BK1080) | **known bug:** opens but plays no sound on the radio |
 | SSB receive on a VFO slot, with 1 kHz to 10 Hz steps; meant for both sidebands | emulator-tested; on-air test pending |
 | Stock's ENCRY, a private code squelch: the same registers as stock in all cases tried | emulator-tested; on-air test pending |
 | Frequency scanner: a typed range and step, in FM, AM or Auto (AM on airband and 27 MHz CB), stops into VFO mode | emulator-tested; on-air test pending |
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
-| Receiver event log, read over the cable (Talkpod Manager's Event log) | emulator-tested |
+| Receiver event log, read over the cable (Talkpod Manager's Event log), with signal readings and weak stations the squelch kept out (1.23) | emulator-tested |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
 | CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | emulator-tested; on-air test pending |
 | Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working on air; weak: words stay partly understandable |
@@ -64,12 +82,14 @@ and a channel scan. The splash is any animation you send it; this one is the own
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | emulator-tested; on-air test pending |
 | APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
-| Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters | emulator-tested (timing exact to the ms); on-air test pending |
+| Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters, without Roger or tail | emulator-tested (timing exact to the ms); on-air test pending |
+| Text lengths: Messages 29 (the UV-K5 packet), APRS 67 (the APRS standard), pager 91 (one BK4819 data packet), Morse 144 | emulator-tested (a 91-character page decoded back) |
 | Sent texts kept through power-off and recalled on any typing screen (hold FM) | emulator-tested; storage checked over 1000 sends |
 | Animated boot splash, changeable over the serial cable | working |
 | Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working on the radio |
-| Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | emulator-tested; on-air test pending |
-| Ten short sounds (key beep, menu, high / low, power-on, low voltage...) | working (built from the radio's own voice prompts) |
+| Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | side keys and top key working on the radio (1.17); the rest emulator-tested |
+| Ten short sounds (key beep, menu, high / low, power-on, low voltage...), built from the radio's own voice prompts | working; spoken prompts at twice the recording's level heard right on the radio (1.18) |
+| The mode spoken after the power-on sound (1.18), the power-on sound at three times its level (1.19) | emulator-tested; not yet heard |
 
 The firmware does **not** have yet:
 - the side key functions Remote (unknown so far) and DTMF (not on this radio's stock firmware);
@@ -82,11 +102,11 @@ You need the programming cable (K-plug USB serial) and Linux with Python 3, pyse
 The flasher is `talkpod-firmware` from
 [Talkpod Manager](https://github.com/ssjrocks/talkpod-manager).
 
-1. **Flash** it. In Talkpod Manager 0.2 or later: main menu → **Flash firmware…** → Talkpod Super
-   Firmware (it downloads the newest release). Or from the command line, the release's `.kdhx` (or
+1. **Flash** it. In Talkpod Manager: main menu → **Flash firmware…** → Talkpod Super Firmware (it
+   downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.11.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.26.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.
@@ -107,6 +127,10 @@ The flasher is `talkpod-firmware` from
    ```
    Talkpod Manager can do the same: see
    [docs/serial-interface.md](docs/serial-interface.md#boot-splash).
+
+When the radio does something odd while receiving, plug the cable in without switching it off and
+open **Event log…** in Talkpod Manager 0.5 or later: it reads the radio's last 128 receiver events and
+explains each one.
 
 To go back to stock firmware, flash the stock `.kdhx` with `talkpod-firmware`. The stock voice
 prompts stay gone until the flash backup is written back; there is no restore tool yet.

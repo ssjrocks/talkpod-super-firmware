@@ -38,6 +38,11 @@ for _ in $(seq 1 30); do
     t=$((t + 120))
 done
 shot settings --flash "$flash" --ms $((t + 300)) --keys "$keys"
+for _ in $(seq 1 28); do
+    keys+=",$t:DOWN:40"
+    t=$((t + 120))
+done
+shot settings2 --flash "$flash" --ms $((t + 300)) --keys "$keys"
 
 shot ssb --flash "$flash" --ms 3000 --keys 800:MENU:800,2000:FM:80,2500:FM:80
 shot messages --flash "$flash" --ms 3800 --keys 500:5:800 --fsk-rx "2000:$(msg 'on my way, 10 min')"
@@ -47,6 +52,12 @@ shot aprs --flash "$flash" --ms 4300 --keys 1500:7:900 \
 shot pager --flash "$flash" --ms 4000 --keys 1500:8:900 \
     --fsk-rx "2500:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'TEST PAGE FROM THE BENCH')" \
     --fsk-rx "3000:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'RADIO CHECK OK')"
+# Morse: PARIS typed on the keypad and going out; then, after a sent text, holding FM recalls it
+paris="500:9:900,2000:7:60,2300:2:60,2600:7:60,2750:7:60,2900:7:60,3200:4:60,3350:4:60,3500:4:60"
+paris+=",3800:7:60,3950:7:60,4100:7:60,4250:7:60,5600:MENU:60"
+shot morse --flash "$flash" --ms 7300 --keys "$paris"
+shot history --flash "$flash" --ms 9600 --keys "$paris,8400:FM:900"
+shot about --flash "$flash" --ms 1700 --keys 700:MENU:60,1000:UP:60,1300:MENU:60
 python3 tools/splash.py docs/ui/test-splash.gif --image "$flash" "$out/flash-splash.bin" > /dev/null
 shot splash --flash "$out/flash-splash.bin" --ms 900
 
@@ -57,12 +68,14 @@ from PIL import Image, ImageDraw, ImageFont
 
 SCREENS = [("main", "dual watch"), ("rx", "receiving"), ("tx", "transmitting"), ("menu", "menu"),
            ("fs-setup", "frequency scanner: range"), ("fs-run", "frequency scanner: stopped on a signal, AM"),
-           ("settings", "settings, stock's included"), ("ssb", "SSB receive on a VFO"),
-           ("messages", "text messages"), ("aprs", "APRS heard"), ("pager", "POCSAG pager"),
-           ("splash", "boot splash")]
+           ("settings", "settings, stock's included"), ("settings2", "Roger, tail cut and more"),
+           ("ssb", "SSB receive on a VFO"), ("messages", "text messages"), ("aprs", "APRS heard"),
+           ("pager", "POCSAG pager"), ("morse", "Morse code going out"), ("history", "hold FM: a text sent before"),
+           ("splash", "boot splash"), ("about", "about")]
 SIZE, GAP, LABEL = 384, 24, 34
 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
-sheet = Image.new("RGB", (GAP + (SIZE + GAP) * 4, GAP + (SIZE + LABEL) * 3), (225, 228, 233))
+rows = (len(SCREENS) + 3) // 4
+sheet = Image.new("RGB", (GAP + (SIZE + GAP) * 4, GAP + (SIZE + LABEL) * rows), (225, 228, 233))
 draw = ImageDraw.Draw(sheet)
 for i, (name, label) in enumerate(SCREENS):
     x, y = GAP + (SIZE + GAP) * (i % 4), GAP + (SIZE + LABEL) * (i // 4)
