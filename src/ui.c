@@ -29,6 +29,7 @@
 #include "msg.h"
 #include "aprs.h"
 #include "morse.h"
+#include "sent.h"
 #include "pocsag.h"
 #include "roll.h"
 #include "stock.h"
@@ -560,12 +561,17 @@ static void draw_about(void)
 static const char *const key_chars[10] = {
     " 0", ".,?!-'/@1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
 };
-static char comp[MORSE_TEXT + 1];        /* what is typed: Messages, APRS, Pager, Morse */
+static char comp[SENT_TEXT + 1];        /* what is typed: Messages, APRS, Pager, Morse */
 static uint8_t comp_len, tap_key = 0xFF, tap_n, tap_shown, lower, msg_scroll;
 static uint8_t comp_max = MSG_TEXT;     /* the open screen's limit */
 
+static int8_t hist_pos = -1;            /* browsing what was sent (hold FM): which one, -1 typing */
+static char hist_text[SENT_TEXT + 1];
+static int hist_kind, hist_n;
+
 static void compose_for(int max)        /* a screen opens with its limit; a longer text is cut to it */
 {
+    hist_pos = -1;
     comp_max = (uint8_t)max;
     if (comp_len > max) {
         comp_len = (uint8_t)max;
@@ -620,6 +626,22 @@ static void draw_msg_history(void)
 static void draw_compose(const char *hint)     /* the messages screen's own hint when 0 */
 {
     char line[MSG_LINE + 1], s[24];
+    if (hist_pos >= 0) {                        /* a text sent before: its start, highlighted */
+        static const char *const kinds[4] = {"Msg", "APRS", "Pager", "Morse"};
+        lcd_fill(0, MSG_BOTTOM, LCD_W, LCD_H - MSG_BOTTOM, C_PANEL);
+        lcd_fill(0, MSG_BOTTOM, LCD_W, 21, C_PANEL2);
+        int len = (int)strlen(hist_text);
+        for (int l = 0; l < 2 && l * MSG_LINE < len; l++) {
+            int n = len - l * MSG_LINE > MSG_LINE ? MSG_LINE : len - l * MSG_LINE;
+            memcpy(line, hist_text + l * MSG_LINE, (size_t)n);
+            line[n] = 0;
+            gfx_text(1, MSG_BOTTOM + 2 + l * 10, &font_6x10, line, C_AMBER, C_PANEL2);
+        }
+        put_str(put_str(put_str(put_dec(put_str(put_dec(s, (uint32_t)hist_pos + 1), "/"), (uint32_t)hist_n), " "),
+                        kinds[hist_kind & 3]), "  MENU use");
+        gfx_text(1, LCD_H - 9, &font_5x8, s, C_DIM, C_PANEL);
+        return;
+    }
     int cur = (comp_len < comp_max ? comp_len : comp_len - 1) / MSG_LINE;     /* the cursor's line */
     int top = cur > 0 ? cur - 1 : 0;            /* two lines show, the cursor's the lower one */
     lcd_fill(0, MSG_BOTTOM, LCD_W, LCD_H - MSG_BOTTOM, C_PANEL);
@@ -719,9 +741,15 @@ static int text_key(const key_event_t *ev, char *buf, uint8_t *len, int max, int
         }
         return 1;
     }
-    if (ev->key == KEY_FM && ev->type == KEV_PRESS && (kind == E_TEXT || kind == E_KEY)) {
-        lower ^= 1;
-        tap_key = 0xFF;
+    if (ev->key == KEY_FM && (kind == E_TEXT || kind == E_KEY)) {   /* a tap: ABC / abc */
+        if (ev->type == KEV_PRESS) {
+            key_long[KEY_FM] = 0;
+        } else if (ev->type == KEV_LONG) {
+            key_long[KEY_FM] = 1;
+        } else if (ev->type == KEV_RELEASE && !key_long[KEY_FM]) {
+            lower ^= 1;
+            tap_key = 0xFF;
+        }
         return 1;
     }
     if (ev->key == KEY_BACK && ev->type == KEV_LONG) {
@@ -730,6 +758,51 @@ static int text_key(const key_event_t *ev, char *buf, uint8_t *len, int max, int
         return 1;
     }
     return 0;
+}
+
+/* Hold FM on a typing screen: the texts sent before (src/sent.c), newest first. FM taps go to older
+   ones, MENU puts the one shown in the typing box (cut to the screen's limit), BACK goes back to what
+   was typed. 1 if the key was used. */
+static int hist_key(const key_event_t *ev)
+{
+    if (hist_pos < 0) {
+        if (ev->key != KEY_FM || ev->type != KEV_LONG)
+            return 0;
+        key_long[KEY_FM] = 1;
+        hist_n = sent_count();
+        if (!hist_n) {
+            show_toast("nothing sent yet");
+            return 1;
+        }
+        hist_pos = 0;
+    } else if (ev->key == KEY_FM) {
+        if (ev->type == KEV_PRESS)
+            key_long[KEY_FM] = 0;
+        if (ev->type != KEV_RELEASE || key_long[KEY_FM])
+            return 1;
+        hist_pos = (int8_t)((hist_pos + 1) % hist_n);
+    } else if (ev->type != KEV_PRESS) {
+        return 1;
+    } else if (ev->key == KEY_MENU) {
+        int n = (int)strlen(hist_text);
+        if (n > comp_max) {
+            n = comp_max;
+            show_toast("cut to fit");
+        }
+        memcpy(comp, hist_text, (size_t)n);
+        comp[n] = 0;
+        comp_len = (uint8_t)n;
+        tap_key = 0xFF;
+        hist_pos = -1;
+        return 1;
+    } else {
+        if (ev->key == KEY_BACK)
+            hist_pos = -1;
+        return 1;                               /* other keys wait */
+    }
+    if (!sent_get(hist_pos, hist_text, &hist_kind))
+        strcpy(hist_text, "?");
+    return 1;
 }
 
 /* ---- APRS screen --------------------------------------------------------------------------- */
@@ -829,7 +902,7 @@ static void draw_aprs(void)
 
 static void open_aprs(void)
 {
-    compose_for(MSG_TEXT);
+    compose_for(APRS_MSG_TEXT);
     screen = SCR_APRS;
     aprs_read_all();
     aprs_sel = -1;
@@ -883,7 +956,7 @@ static void draw_pager(void)
 
 static void open_pager(void)
 {
-    compose_for(MSG_TEXT);
+    compose_for(PAGE_TEXT);
     screen = SCR_PAGER;
     pager_sel = -1;
     draw_pager();
@@ -1818,6 +1891,7 @@ static void send_message(void)
     int r = msg_send(comp, s->tx, s->narrow, s->low_power);
     watch_pause(0);
     if (r > 0) {
+        sent_add(comp, SENT_MSG);
         comp_len = 0;
         comp[0] = 0;
         msg_scroll = 0;
@@ -1830,7 +1904,7 @@ static void send_message(void)
 
 static void key_msg(const key_event_t *ev)
 {
-    if (text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
+    if (hist_key(ev) || text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
         draw_msg_compose();
         return;
     }
@@ -1890,6 +1964,7 @@ static void aprs_send(void)
     if (r > 0) {
         debug_puts("APRS sent\r\n");
         if (comp_len) {
+            sent_add(comp, SENT_APRS);
             comp_len = 0;
             comp[0] = 0;
         }
@@ -1902,7 +1977,7 @@ static void aprs_send(void)
 
 static void key_aprs(const key_event_t *ev)
 {
-    if (text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
+    if (hist_key(ev) || text_key(ev, comp, &comp_len, APRS_MSG_TEXT, 0)) {
         draw_aprs_compose();
         return;
     }
@@ -1958,6 +2033,7 @@ static void pager_send(void)
     watch_pause(0);
     if (r > 0) {
         debug_puts("page sent\r\n");
+        sent_add(comp, SENT_PAGER);
         comp_len = 0;
         comp[0] = 0;
         pager_sel = -1;
@@ -1969,7 +2045,7 @@ static void pager_send(void)
 
 static void key_pager(const key_event_t *ev)
 {
-    if (text_key(ev, comp, &comp_len, MSG_TEXT, E_TEXT)) {
+    if (hist_key(ev) || text_key(ev, comp, &comp_len, PAGE_TEXT, E_TEXT)) {
         draw_pager();
         return;
     }
@@ -2190,7 +2266,7 @@ static void key_menu(const key_event_t *ev)
 
 /* ---- Morse (long 9): what is typed goes out in Morse on the selected slot --------------------- */
 
-static char morse_sent[MORSE_TEXT + 1];
+static char morse_sent[SENT_TEXT + 1];
 static uint8_t morse_on;                /* a transmission this screen started is running */
 static int morse_shown = -1;            /* the character drawn as being sent */
 #define MORSE_Y 24                      /* the sent text's first line */
@@ -2297,6 +2373,7 @@ static void send_morse(void)
     memcpy(morse_sent, comp, (size_t)comp_len + 1);
     int r = morse_start(morse_sent, s->tx, s->narrow, s->low_power, s->tx_tone.type, s->tx_tone.value, morse_wpm);
     if (r > 0) {
+        sent_add(morse_sent, SENT_MORSE);
         morse_on = 1;
         comp_len = 0;
         comp[0] = 0;
@@ -2310,7 +2387,7 @@ static void send_morse(void)
 
 static void key_morse(const key_event_t *ev)
 {
-    if (!morse_on && text_key(ev, comp, &comp_len, MORSE_TEXT, E_TEXT)) {
+    if (!morse_on && (hist_key(ev) || text_key(ev, comp, &comp_len, MORSE_TEXT, E_TEXT))) {
         draw_morse_compose();
         return;
     }

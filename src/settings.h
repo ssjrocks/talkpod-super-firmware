@@ -10,6 +10,7 @@ enum { SET_MAIN, SET_APRS, SET_PAGER, SET_SCRAMBLE };
 #define SETTINGS_MAX 26                 /* payload bytes per record */
 
 int settings_load(int area, void *dst, uint32_t len);         /* bytes loaded (an older record can be shorter) */
-int settings_save(int area, const void *src, uint32_t len);   /* 1 on success */
+int settings_save(int area, const void *src, uint32_t len);
+uint16_t crc16(const uint8_t *p, uint32_t n);   /* CRC-16/XMODEM, as the records here and stock's logs use */   /* 1 on success */
 
 #endif

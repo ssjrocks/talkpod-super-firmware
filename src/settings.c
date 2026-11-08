@@ -10,7 +10,7 @@
 #define RECORDS (FLASH_SECTOR / REC)
 #define MAGIC   0xA36C
 
-static uint16_t crc16(const uint8_t *p, uint32_t n)
+uint16_t crc16(const uint8_t *p, uint32_t n)
 {
     uint16_t crc = 0;
     while (n--) {

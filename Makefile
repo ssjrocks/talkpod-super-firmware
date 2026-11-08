@@ -42,6 +42,7 @@ C_SOURCES = \
   src/splash.c \
   src/evlog.c \
   src/morse.c \
+  src/sent.c \
   drivers/adc.c \
   gfx/font_5x8.c \
   gfx/font_7x13b.c \
@@ -136,3 +137,10 @@ clean:
 .PHONY: all clean flash
 
 -include $(wildcard $(BUILD)/*.d)
+
+# src/sent.c on the PC against a simulated SPI flash
+host-test:
+	mkdir -p $(BUILD)
+	gcc -std=c11 -Wall -Wextra -O1 -Isrc -Idrivers -o $(BUILD)/test_sent tests/host/test_sent.c
+	$(BUILD)/test_sent
+.PHONY: host-test

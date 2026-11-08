@@ -1,4 +1,4 @@
-# Morse code output (1.25+)
+# Morse code output (1.25+; 144 characters from 1.26)
 
 What the Morse screen transmits, exactly enough to write a decoder for it. The source is
 [`src/morse.c`](../src/morse.c). The timing below was measured in the emulator (`tools/emu.py`); the
@@ -99,7 +99,7 @@ make none.
 | `(` `-.--.` | `)` `-.--.-` | `&` `.-...` | `:` `---...` | `;` `-.-.-.` | `=` `-...-` |
 | `+` `.-.-.` | `-` `-....-` | `_` `..--.-` | `"` `.-..-.` | `@` `.--.-.` | |
 
-There are no prosigns (AR, SK...), and `$` isn't sent. A message is at most 87 characters.
+There are no prosigns (AR, SK...), and `$` isn't sent. A message is at most 144 characters.
 
 ## Decoding it
 

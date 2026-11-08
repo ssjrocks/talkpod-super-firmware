@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define PAGE_TEXT 91                    /* alphanumeric characters that fit 3 batches, one BK4819 packet
+                                           (255 bytes), whatever the RIC's frame */
+
 /* POCSAG paging (see pocsag.c). */
 typedef struct __attribute__((packed)) {
     uint32_t ric;                       /* where MENU sends when no received page is picked */

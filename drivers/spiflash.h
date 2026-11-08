@@ -16,7 +16,9 @@
 #define FLASH_OWN_END   0x1F0000U
 #define FLASH_SOUNDS    0x110000U       /* sound pack (tools/soundpack.py), up to 64 KB */
 #define FLASH_SPLASH    0x120000U       /* boot splash, up to FLASH_SPLASH + FLASH_SPLASH_SIZE */
-#define FLASH_SPLASH_SIZE 0x7D000U      /* 500 KB; 0x19D000-0x1DFFFF is free for later */
+#define FLASH_SPLASH_SIZE 0x7D000U      /* 500 KB */
+#define FLASH_SENT      0x19D000U       /* the texts sent from the typing screens, 2 sectors (src/sent.c);
+                                           0x19F000-0x1DFFFF is free for later */
 #define FLASH_WINDOW_END 0xB440U        /* the stock programming window (CHIRP's memory size) */
 #define FLASH_SETTINGS  0x4000U         /* settings logs, in the window (Read / Write carry them) */
 #define FLASH_SETTINGS_OLD 0x1E0000U    /* where 1.0-1.12 kept them; read while the window has none */

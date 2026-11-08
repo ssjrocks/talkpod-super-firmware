@@ -12,6 +12,7 @@
  * the VFOs, and writing them adds a record. Every other address is plain flash.
  */
 #include <string.h>
+#include "settings.h"
 #include "stock.h"
 #include "spiflash.h"
 
@@ -34,17 +35,6 @@ static const uint8_t DEFAULTS[0x31] = {
 
 stock_t stock;
 static stock_t stored;                  /* what the newest record holds */
-
-static uint16_t crc16(const uint8_t *p, uint32_t n)
-{
-    uint16_t crc = 0;
-    while (n--) {
-        crc ^= (uint16_t)(*p++ << 8);
-        for (int i = 0; i < 8; i++)
-            crc = (uint16_t)(crc & 0x8000 ? crc << 1 ^ 0x1021 : crc << 1);
-    }
-    return crc;
-}
 
 static int newest_slot(const log_t *l)
 {

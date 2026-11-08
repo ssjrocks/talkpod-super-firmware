@@ -261,7 +261,7 @@ static char *put_num(char *d, uint16_t v)
 
 int aprs_message(const char *to, const char *text, uint32_t freq, int narrow, int low_power)
 {
-    char info[64], id[6];
+    char info[16 + APRS_MSG_TEXT + 6], id[6];   /* ":ADDRESSEE:" text "{" id */
     int n = addressee(info, to);
     size_t tl = strlen(text);
     memcpy(info + n, text, tl);

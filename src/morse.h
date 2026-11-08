@@ -6,7 +6,7 @@
 /* Morse code sent as a tone on the FM transmitter (MCW), src/morse.c */
 #define MORSE_WPM     30                /* about a professional operator's speed */
 #define MORSE_HZ      700
-#define MORSE_TEXT    87                /* characters: three text messages' worth */
+#define MORSE_TEXT    144               /* characters: no protocol limits it */
 
 int  morse_start(const char *text, uint32_t freq, int narrow, int low_power, int tone, uint16_t tone_value,
                  int wpm);              /* 1 sending, -1 TX not allowed there, 0 nothing to send */

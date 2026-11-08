@@ -227,6 +227,11 @@ Talkpod Manager's `tsf_settings.py` reads and writes them; the payloads are the 
 The newest valid record wins, and the sector is erased only when full. A record from older firmware
 is shorter; the fields it lacks keep their defaults.
 
+**Sent texts** (`src/sent.c`), the history held FM shows: two 4 KB sectors at 0x19D000, written in
+turn; records of 160 bytes: u16 magic 0x5E47, u8 length, u8 kind (0 message, 1 APRS, 2 pager,
+3 Morse), up to 144 characters, zeros, u16 sequence (bytes 156–157), u16 CRC-16/XMODEM of bytes
+0–157. When one sector is full, the other is erased and written next.
+
 **Sound pack** (`tools/soundpack.py`) at 0x110000:
 - header: "SNDP", u16 count, u16 sample rate;
 - then count x {u16 id, u16 0, u32 offset, u32 length};

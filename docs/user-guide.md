@@ -195,7 +195,7 @@ suppressed carrier. One mode is meant to cover upper and lower sideband: see
 
 ## Typing text
 
-The Messages, APRS and Pager screens and the text editors type like an old phone keypad:
+The Messages, APRS, Pager and Morse screens and the text editors type like an old phone keypad:
 
 | Key | Characters (press again within a second for the next) |
 |---|---|
@@ -203,10 +203,29 @@ The Messages, APRS and Pager screens and the text editors type like an old phone
 | 2–9 | the letters on the key, then the digit (`A B C 2` ...) |
 | 0 | space, then `0` |
 | any digit, held | the digit itself |
-| FM | ABC / abc |
+| FM, tapped | ABC / abc |
+| FM, held | the texts you sent before (below) |
 | BACK | delete the last character (hold: delete all) |
 
-The letter that is still cycling is shown highlighted. Messages are up to 29 characters.
+The letter that is still cycling is shown highlighted.
+
+**Sending a text again:** on the Messages, APRS, Pager and Morse screens, hold **FM**. The typing box
+shows the last text you sent, highlighted, with its number and the screen it went from ("1/12 Morse").
+Each tap of **FM** goes to an older one. **MENU** puts the one shown in the typing box, to change or
+send; **BACK** goes back to what you were typing, unchanged. All four screens share the list, so a
+text sent as a message can go out again in Morse. The radio keeps at least the last 25, through
+power-off.
+
+**How long a text can be:**
+
+| Screen | Characters | Why |
+|---|---|---|
+| Messages | 29 | the UV-K5 messenger's packet has room for 29 |
+| APRS | 67 | the APRS standard's limit for a message |
+| Pager | 91 | a page goes out as one BK4819 data packet (255 bytes at most): 91 fit whatever the RIC |
+| Morse | 144 | nothing limits it but the TX timeout |
+
+A text recalled on a screen with a lower limit is cut to it ("cut to fit").
 
 ## Messages (long 5)
 
@@ -255,7 +274,7 @@ goes with it, so repeaters let it through.
   between letters, seven between words. The carrier comes up half a second before the first letter,
   for receivers' squelch and repeaters.
 - **Letters:** A–Z, 0–9 and `. , ? ' ! / ( ) & : ; = + - _ " @`; anything else is skipped. Up to
-  87 characters; the typing box scrolls.
+  144 characters; the typing box scrolls.
 - The exact signal (tone, timing, what comes before and after) is in [morse.md](morse.md), for
   writing a decoder.
 - While it sends, the letter going out is highlighted. **BACK** stops it at once; **PTT** stops it and

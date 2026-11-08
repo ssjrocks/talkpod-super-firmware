@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define APRS_MSG_TEXT 67                /* the APRS spec's limit for a message's text */
+
 /* APRS on AFSK 1200 (see aprs.c). */
 typedef struct __attribute__((packed)) {
     char call[10];                      /* "VK2ABC-9"; empty until set */
