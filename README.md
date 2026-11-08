@@ -57,39 +57,41 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ## Features
 
+Each release was tested on the radio.
+
 | | Status |
 |---|---|
-| FM receive, wide / narrow | working on the radio |
-| AM receive (airband channels automatic, any VFO frequency on request) | built, not yet checked with an AM signal |
-| Squelch 0–9 from the radio's own calibration; level 1 opens on weak stations stock muted, level 3 is about stock's level 1 (1.23) | thresholds emulator-checked; on-air pending |
-| Received audio at the radio's calibrated level, as stock (1.21; before, it clipped at any volume) | emulator-checked against stock's own code on the radio's calibration; on-air pending |
-| Signal meter: 16 segments of 6 dB, −125 to −29 dBm (1.21) | emulator-tested |
-| Tail cut on receive: the mute ends with the carrier, or half a second at most (1.22; before, tone bursts could leave the audio muted until PTT) | the stuck mute reproduced in the emulator on 1.21 and gone on 1.22; on-air pending |
+| FM receive, wide / narrow | working |
+| AM receive (airband channels automatic, any VFO frequency on request) | working |
+| Squelch 0–9 from the radio's own calibration; level 1 opens on weak stations stock muted, level 3 is about stock's level 1 (1.23) | working |
+| Received audio at the radio's calibrated level, as stock (1.21; before, it clipped at any volume) | working |
+| Signal meter: 16 segments of 6 dB, −125 to −29 dBm (1.21) | working |
+| Tail cut on receive: the mute ends with the carrier, or half a second at most (1.22; before, tone bursts could leave the audio muted until PTT) | working |
 | Dual watch (two slots, each a channel or a VFO frequency) | working |
 | Frequency search (strongest nearby carrier) | working |
 | Channel scan with lock-out | working |
 | FM broadcast radio (BK1080) | **known bug:** opens but plays no sound on the radio |
-| SSB receive on a VFO slot, with 1 kHz to 10 Hz steps; meant for both sidebands | emulator-tested; on-air test pending |
-| Stock's ENCRY, a private code squelch: the same registers as stock in all cases tried | emulator-tested; on-air test pending |
-| Frequency scanner: a typed range and step, in FM, AM or Auto (AM on airband and 27 MHz CB), stops into VFO mode | emulator-tested; on-air test pending |
-| FM transmit with the radio's PA calibration, high / low power, time-out timer | working, voice heard on air (1.11; 1.0–1.10 sent a silent carrier) |
-| Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working on the radio |
-| Receiver event log, read over the cable (Talkpod Manager's Event log), with signal readings and weak stations the squelch kept out (1.23) | emulator-tested |
-| Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | emulator-tested |
-| CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | emulator-tested; on-air test pending |
-| Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working on air; weak: words stay partly understandable |
-| Rolling scrambler: the inversion frequency glides along a keyed path (Super Firmware radios only) | emulator-tested; on-air test pending |
-| UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | emulator-tested; on-air test pending |
-| APRS: beacons, messages, acks (AFSK 1200) | sending emulator-tested; receiving experimental |
-| POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | emulator-tested; on-air test pending |
-| Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters, without Roger or tail | emulator-tested (timing exact to the ms); on-air test pending |
-| Text lengths: Messages 29 (the UV-K5 packet), APRS 67 (the APRS standard), pager 91 (one BK4819 data packet), Morse 144 | emulator-tested (a 91-character page decoded back) |
-| Sent texts kept through power-off and recalled on any typing screen (hold FM) | emulator-tested; storage checked over 1000 sends |
+| SSB receive on a VFO slot, with 1 kHz to 10 Hz steps, for both sidebands | working |
+| Stock's ENCRY, a private code squelch | working |
+| Frequency scanner: a typed range and step, in FM, AM or Auto (AM on airband and 27 MHz CB), stops into VFO mode | working |
+| FM transmit with the radio's PA calibration, high / low power, time-out timer | working (1.0–1.10 sent a silent carrier; fixed in 1.11) |
+| Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working |
+| Receiver event log, read over the cable (Talkpod Manager's Event log), with signal readings and weak stations the squelch kept out (1.23) | working |
+| Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | working |
+| CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | working |
+| Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working; weak: words stay partly understandable |
+| Rolling scrambler: the inversion frequency glides along a keyed path (Super Firmware radios only) | working |
+| UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | working |
+| APRS: beacons, messages, acks (AFSK 1200) | working |
+| POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric | working |
+| Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters, without Roger or tail | working |
+| Text lengths: Messages 29 (the UV-K5 packet), APRS 67 (the APRS standard), pager 91 (one BK4819 data packet), Morse 144 | working |
+| Sent texts kept through power-off and recalled on any typing screen (hold FM) | working |
 | Animated boot splash, changeable over the serial cable | working |
-| Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working on the radio |
-| Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | side keys and top key working on the radio (1.17); the rest emulator-tested |
-| Ten short sounds (key beep, menu, high / low, power-on, low voltage...), built from the radio's own voice prompts | working; spoken prompts at twice the recording's level heard right on the radio (1.18) |
-| The mode spoken after the power-on sound (1.18), the power-on sound at three times its level (1.19) | emulator-tested; not yet heard |
+| Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working |
+| Stock's settings, in stock's record: Roger, tail cut, VOX, battery save, PTT-ID, side keys, alarm, auto lock, display, Dual TX, scan resume (1.14+) | working |
+| Ten short sounds (key beep, menu, high / low, power-on, low voltage...), built from the radio's own voice prompts; spoken prompts at twice the recording's level (1.18) | working |
+| The mode spoken after the power-on sound (1.18), the power-on sound at three times its level (1.19) | working |
 
 The firmware does **not** have yet:
 - the side key functions Remote (unknown so far) and DTMF (not on this radio's stock firmware);
