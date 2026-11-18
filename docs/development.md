@@ -69,6 +69,8 @@ Helpers:
 - `tools/pocsag_emu.py`: `rx RIC TEXT [numeric]` makes a capture; `tx LOG` decodes a sent page from
   the FIFO writes.
 - `tools/splash.py GIF --image IN OUT` puts a splash into a flash image.
+- `tools/midi2tune.py FILE.mid info | tune | wav`: a MIDI recording's melody (and a second voice, e.g. the
+  bass) as notes for `src/tune.c`, and a WAV of how the radio will play it. It reads only notes and tempo.
 - `tools/stock_emu.py`: drives program mode through the emulator as CHIRP does, on a flash image, and
   checks the result by stock's rules. `emu.py --serial-in` / `--serial-out` carry the bytes.
 - `tools/roll.py`: the rolling scrambler's reference path. `cfg` puts a key and rolling channels into

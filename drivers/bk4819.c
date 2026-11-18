@@ -547,6 +547,22 @@ void bk4819_tone_hz(uint16_t hz)
     bk4819_write(0x71, (uint16_t)(((uint32_t)hz * 103244U + 5000) / 10000));
 }
 
+void bk4819_tone2_hz(uint16_t hz)
+{
+    bk4819_write(0x72, (uint16_t)(((uint32_t)hz * 103244U + 5000) / 10000));
+}
+
+void bk4819_tones(int on1, int on2, int gain)
+{
+    bk4819_write(0x70, (uint16_t)((on1 ? 0x8000 : 0) | gain << 8 | (on2 ? 0x80 : 0) | gain));
+}
+
+void bk4819_fsk_restore(void)
+{
+    if (fsk_modem != BK_FSK_OFF)
+        bk4819_fsk_setup(fsk_modem, fsk_rx_len);
+}
+
 void bk4819_fsk_setup(int modem, int rx_len)
 {
     fsk_modem = (uint8_t)modem;

@@ -302,9 +302,10 @@ goes with it, so repeaters let it through.
 
 ## Tunes (long 7)
 
-Short tunes for fun, from a "ta-da" to about 10 seconds: Ta-da!, Level up, Charge!, Shave & haircut, Sad
-trombone, Boing, Ode to joy, Fur Elise, Happy birthday and Twinkle twinkle (public domain, or made up for
-this firmware). Each shows how long it is.
+Short tunes for fun, from a "ta-da" to about 14 seconds: Keyboard jam (melody and bass together, on the
+chip's two tone generators), Ta-da!, Level up, Charge!, Shave & haircut, Sad trombone, Boing, Ode to joy,
+Fur Elise, Happy birthday and Twinkle twinkle (the user's own, public domain, or made up for this
+firmware). Each shows how long it is.
 
 - UP / DOWN pick one. **MENU** plays it on the speaker (unplug the programming cable: it cuts the speaker).
 - **Hold MENU** to send it on the selected slot: the tone goes out on the FM carrier the way Morse does,

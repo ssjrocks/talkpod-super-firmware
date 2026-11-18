@@ -27,7 +27,7 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.35**. Builds to about 59.6 KB of the MCU's 63 KB application flash.
+Version **1.36**. Builds to about 60.1 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -79,7 +79,7 @@ Each release was tested on the radio.
 | Receiver event log, read over the cable (Talkpod Manager's Event log), with signal readings and weak stations the squelch kept out (1.23) | working |
 | Control from a PC over the programming cable, for testing: press and hold keys, type into the open text screen, list the pages (shell `k`, `K`, `T`, `h`; 1.27) | working |
 | Menu in 7 categories (digits open them); hold A/B on the Messages, Pager and Morse screens for their own settings (1.34) | working |
-| Tunes: 10 short melodies (up to 10 s) on the speaker, or sent on the selected slot as a tone on the FM carrier (long 7; 1.35) | working |
+| Tunes: 11 short melodies (up to 14 s; one with a bass line on the second tone generator) on the speaker, or sent on the selected slot as tones on the FM carrier (long 7; 1.35-1.36) | working |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | working |
 | CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | working |
 | Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working; weak: words stay partly understandable |
@@ -111,7 +111,7 @@ The flasher is `talkpod-firmware` from
    downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.35.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.36.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.

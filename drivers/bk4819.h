@@ -50,6 +50,9 @@ void     bk4819_pocsag_baud(uint16_t baud, int rx_inv);  /* BK_FSK_POCSAG: 512, 
                                                   for the inverted sync codeword */
 void     bk4819_tone_tx(int on);                /* while transmitting: tone 1 instead of the mic */
 void     bk4819_tone_hz(uint16_t hz);
+void     bk4819_tone2_hz(uint16_t hz);              /* tone 2: REG_72, which the modem uses too */
+void     bk4819_tones(int on1, int on2, int gain);  /* REG_70: tones 1 and 2 keyed, each at gain (0-127) */
+void     bk4819_fsk_restore(void);              /* the modem's registers again, after tone 2 was used */
 void     bk4819_dtmf(int digit);                /* with bk4819_tone_tx(1): a DTMF digit, -1 silence */
 void     bk4819_tail(int dcs, int phase);       /* while transmitting: the squelch tail */
 void     bk4819_roger_data(void);               /* while transmitting: roger TONE1200 */

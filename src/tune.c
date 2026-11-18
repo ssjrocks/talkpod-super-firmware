@@ -5,8 +5,11 @@
  *
  * A tune is notes of two bytes: the MIDI note number (60 middle C, 0 a rest; bit 7 G: glide to the next
  * note's pitch over this one, without a gap), then the length in 10 ms. A note that doesn't glide ends
- * with GAP_MS of silence, so repeated notes are heard as two. The tunes are public domain, or made up
- * here (Ta-da!, Level up, Sad trombone, Boing). */
+ * with GAP_MS of silence, so repeated notes are heard as two. A tune may have a second voice (a bass) on
+ * the chip's second tone generator, in the same form and keeping its own time; tone 2's register is the
+ * modem's bit rate too, so the modem is set up again afterwards. The tunes are public domain, made up
+ * here (Ta-da!, Level up, Sad trombone, Boing), or the user's own (Keyboard jam, from a MIDI recording
+ * by tools/midi2tune.py: channels 16 and 7, the bass two octaves up, 1.25 x the tempo). */
 #include "tune.h"
 #include "bk4819.h"
 #include "board.h"
@@ -18,6 +21,27 @@
 #define GAP_MS  20
 #define G       0x80
 
+static const uint8_t t_jam[] = {
+    84, 20, 81, 40, 84, 20, 83, 40, 84, 20, 83, 40, 79, 120, 81, 20, 88, 20, 86, 40,
+    84, 20, 83, 40, 84, 20, 83, 40, 79, 140, 84, 20, 81, 40, 84, 20, 83, 40, 84, 20,
+    83, 40, 79, 120, 81, 20, 81, 20, 77, 40, 81, 20, 79, 40, 81, 20, 79, 40, 72, 140,
+    84, 20, 81, 40, 84, 20, 83, 40,
+};
+static const uint8_t t_jam_bass[] = {
+    65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 20, 64, 7, 0, 13, 64, 7,
+    0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 60, 20, 62, 20, 64, 20,
+    65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13,
+    65, 7, 0, 13, 65, 7, 0, 13, 65, 20, 64, 7, 0, 13, 64, 7, 0, 13, 64, 7,
+    0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 60, 20, 62, 20, 64, 20, 65, 7, 0, 13,
+    65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13,
+    65, 7, 0, 13, 65, 20, 64, 7, 0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 64, 7,
+    0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 64, 7, 0, 13, 64, 20, 62, 7, 0, 13,
+    62, 7, 0, 13, 62, 7, 0, 13, 62, 7, 0, 13, 62, 7, 0, 13, 62, 7, 0, 13,
+    62, 7, 0, 13, 62, 20, 60, 7, 0, 13, 60, 7, 0, 13, 60, 7, 0, 13, 60, 7,
+    0, 13, 60, 7, 0, 13, 60, 20, 62, 20, 64, 20, 65, 7, 0, 13, 65, 7, 0, 13,
+    65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13, 65, 7, 0, 13,
+    65, 20, 64, 7, 0, 13, 64, 7,
+};
 static const uint8_t t_tada[] = {72, 8, 76, 8, 79, 8, 0, 4, 84, 60};
 static const uint8_t t_levelup[] = {72, 6, 76, 6, 79, 6, 84, 6, 88, 6, 91, 6, 96, 30};
 static const uint8_t t_charge[] = {67, 15, 72, 15, 76, 15, 79, 30, 76, 15, 79, 60};
@@ -49,12 +73,13 @@ static const uint8_t t_twinkle[] = {
 
 typedef struct {
     const char *name;
-    const uint8_t *notes;
-    uint8_t n;                          /* notes, two bytes each */
+    const uint8_t *notes, *bass;        /* bass: the second voice, or 0 */
+    uint8_t n, nb;                      /* notes, two bytes each */
 } tune_t;
-#define T(name, a) {name, a, sizeof a / 2}
+#define T(name, a) {name, a, 0, sizeof a / 2, 0}
+#define T2(name, a, b) {name, a, b, sizeof a / 2, sizeof b / 2}
 static const tune_t tunes[] = {
-    T("Ta-da!", t_tada), T("Level up", t_levelup), T("Charge!", t_charge), T("Shave & haircut", t_shave),
+    T2("Keyboard jam", t_jam, t_jam_bass), T("Ta-da!", t_tada), T("Level up", t_levelup), T("Charge!", t_charge), T("Shave & haircut", t_shave),
     T("Sad trombone", t_trombone), T("Boing", t_boing), T("Ode to joy", t_ode), T("Fur Elise", t_elise),
     T("Happy birthday", t_birthday), T("Twinkle twinkle", t_twinkle),
 };
@@ -69,12 +94,19 @@ static uint16_t note_hz(int n)
     return (uint16_t)((top4[n % 12] + (1u << (shift - 1))) >> shift);
 }
 
-enum { IDLE, LEAD, SOUND, SILENT, TAIL };
+enum { IDLE, LEAD, PLAY, TAIL };                /* the tune */
+enum { V_DONE, V_SOUND, V_SILENT };             /* a voice */
 
-static const tune_t *cur;
-static uint8_t state, idx, on_air, glide;
-static uint16_t hz_now, glide_from, glide_to, rest_ms;
-static uint32_t next_at, glide_at, glide_len;
+typedef struct {
+    const uint8_t *notes;
+    uint8_t n, idx, state, glide, on;
+    uint16_t hz, from, to, rest;
+    uint32_t next_at, glide_at, glide_len;
+} voice_t;
+
+static voice_t vs[2];                           /* the melody on tone 1, a bass on tone 2 */
+static uint8_t state, on_air, gain;
+static uint32_t next_at;                        /* the end of the lead or the tail */
 
 int tune_count(void)
 {
@@ -86,12 +118,20 @@ const char *tune_name(int i)
     return i >= 0 && i < TUNES ? tunes[i].name : "";
 }
 
+static uint32_t voice_ms(const uint8_t *notes, int n)
+{
+    uint32_t ms = 0;
+    for (int k = 0; k < n; k++)
+        ms += notes[2 * k + 1] * 10u;
+    return ms;
+}
+
 uint32_t tune_ms(int i, int air)
 {
-    uint32_t ms = air ? LEAD_MS + TAIL_MS : 0;
-    for (int k = 0; i >= 0 && i < TUNES && k < tunes[i].n; k++)
-        ms += tunes[i].notes[2 * k + 1] * 10u;
-    return ms;
+    if (i < 0 || i >= TUNES)
+        return 0;
+    uint32_t a = voice_ms(tunes[i].notes, tunes[i].n), b = voice_ms(tunes[i].bass, tunes[i].nb);
+    return (a > b ? a : b) + (air ? LEAD_MS + TAIL_MS : 0);
 }
 
 int tune_active(void)
@@ -99,11 +139,75 @@ int tune_active(void)
     return state != IDLE;
 }
 
-static void set_hz(uint16_t hz)
+static void key(voice_t *v, int on)
 {
-    if (hz != hz_now) {
-        bk4819_tone_hz(hz);
-        hz_now = hz;
+    if (v->on != on) {
+        v->on = (uint8_t)on;
+        bk4819_tones(vs[0].on, vs[1].on, gain);
+    }
+}
+
+static void set_hz(int k, uint16_t hz)
+{
+    if (hz != vs[k].hz) {
+        if (k)
+            bk4819_tone2_hz(hz);
+        else
+            bk4819_tone_hz(hz);
+        vs[k].hz = hz;
+    }
+}
+
+static void next_note(int k)
+{
+    voice_t *v = &vs[k];
+    if (v->idx >= v->n) {
+        key(v, 0);
+        v->state = V_DONE;
+        return;
+    }
+    int p = v->notes[2 * v->idx], n = p & 0x7F;
+    uint32_t ms = v->notes[2 * v->idx + 1] * 10u;
+    v->idx++;
+    v->glide = 0;
+    if (!n) {
+        key(v, 0);
+        v->state = V_SILENT;
+        v->next_at += ms;
+        return;
+    }
+    set_hz(k, note_hz(n));
+    key(v, 1);
+    v->state = V_SOUND;
+    if ((p & G) && v->idx < v->n && (v->notes[2 * v->idx] & 0x7F)) {
+        v->glide = 1;
+        v->from = v->hz;
+        v->to = note_hz(v->notes[2 * v->idx] & 0x7F);
+        v->glide_at = v->next_at;
+        v->glide_len = ms;
+        v->next_at += ms;
+    } else {
+        uint32_t gap = ms > 2 * GAP_MS ? GAP_MS : ms / 2;
+        v->rest = (uint16_t)gap;
+        v->next_at += ms - gap;
+    }
+}
+
+static void voice_poll(int k, uint32_t now)
+{
+    voice_t *v = &vs[k];
+    if (v->state == V_DONE)
+        return;
+    if (v->glide && v->state == V_SOUND && now - v->glide_at < v->glide_len)
+        set_hz(k, (uint16_t)(v->from + ((int32_t)v->to - v->from) * (int32_t)(now - v->glide_at) / (int32_t)v->glide_len));
+    if ((int32_t)(now - v->next_at) < 0)
+        return;
+    if (v->state == V_SOUND && !v->glide) {
+        key(v, 0);
+        v->state = V_SILENT;
+        v->next_at += v->rest;
+    } else {
+        next_note(k);                           /* after a rest or a gap; a glide goes straight on */
     }
 }
 
@@ -111,69 +215,37 @@ static void end_local(void)
 {
     bk4819_beep(0, 0);
     board_speaker(SPK_TUNE, 0);
+    bk4819_fsk_restore();
     state = IDLE;
-}
-
-static void next_note(void)
-{
-    if (idx >= cur->n) {                        /* the end: the carrier a little longer on the air */
-        bk4819_tone_key(0);
-        if (on_air) {
-            state = TAIL;
-            next_at += TAIL_MS;
-        } else {
-            end_local();
-        }
-        return;
-    }
-    int p = cur->notes[2 * idx], n = p & 0x7F;
-    uint32_t ms = cur->notes[2 * idx + 1] * 10u;
-    idx++;
-    glide = 0;
-    if (!n) {
-        bk4819_tone_key(0);
-        state = SILENT;
-        next_at += ms;
-        return;
-    }
-    set_hz(note_hz(n));
-    bk4819_tone_key(1);
-    state = SOUND;
-    if ((p & G) && idx < cur->n && (cur->notes[2 * idx] & 0x7F)) {
-        glide = 1;
-        glide_from = hz_now;
-        glide_to = note_hz(cur->notes[2 * idx] & 0x7F);
-        glide_at = next_at;
-        glide_len = ms;
-        next_at += ms;
-    } else {
-        uint32_t gap = ms > 2 * GAP_MS ? GAP_MS : ms / 2;
-        rest_ms = (uint16_t)gap;
-        next_at += ms - gap;
-    }
 }
 
 int tune_start(int i, uint32_t freq, int narrow, int low_power, int tone, uint16_t tone_value)
 {
     if (i < 0 || i >= TUNES)
         return 0;
-    cur = &tunes[i];
-    idx = 0;
-    hz_now = 0;
+    const tune_t *t = &tunes[i];
     on_air = freq != 0;
     if (on_air) {
         if (!tx_start(freq, narrow, low_power, tone, tone_value, 0))
             return -1;
         bk4819_tone_tx(1);
-        bk4819_tone_key(0);
         next_at = millis() + LEAD_MS;
     } else {
         board_speaker(SPK_TUNE, 1);
         bk4819_beep(1, 440);                    /* the tone generator to the speaker */
         bk4819_write(0x48, 0xB3FF);             /* as loud as the shell's test tone */
-        bk4819_tone_key(0);
         next_at = millis() + 100;               /* the screen is drawn meanwhile */
     }
+    gain = t->bass ? 40 : 66;                   /* two tones together deviate as much as one at 66 */
+    for (int k = 0; k < 2; k++) {
+        voice_t *v = &vs[k];
+        v->notes = k ? t->bass : t->notes;
+        v->n = k ? t->nb : t->n;
+        v->idx = v->glide = v->on = 0;
+        v->hz = 0;
+        v->state = v->notes ? V_SILENT : V_DONE;
+    }
+    bk4819_tones(0, 0, gain);
     state = LEAD;
     return 1;
 }
@@ -186,6 +258,7 @@ void tune_stop(void)
         state = IDLE;
         bk4819_tone_tx(0);
         tx_stop();
+        bk4819_fsk_restore();
     } else {
         end_local();
     }
@@ -200,28 +273,28 @@ void tune_poll(void)
         return;
     }
     uint32_t now = millis();
-    if (glide && state == SOUND && now - glide_at < glide_len)
-        set_hz((uint16_t)(glide_from + ((int32_t)glide_to - glide_from) * (int32_t)(now - glide_at) / (int32_t)glide_len));
+    if (state == PLAY) {
+        voice_poll(0, now);
+        voice_poll(1, now);
+        if (vs[0].state == V_DONE && vs[1].state == V_DONE) {
+            if (on_air) {                       /* the carrier a little longer */
+                state = TAIL;
+                next_at = now + TAIL_MS;
+            } else {
+                end_local();
+            }
+        }
+        return;
+    }
     if ((int32_t)(now - next_at) < 0)
         return;
-    switch (state) {
-    case SOUND:
-        if (glide) {                            /* a glide goes straight on to the next note */
-            next_note();
-            break;
-        }
-        bk4819_tone_key(0);
-        state = SILENT;
-        next_at += rest_ms;
-        break;
-    case LEAD:
-    case SILENT:
-        next_note();
-        break;
-    case TAIL:
+    if (state == LEAD) {
+        state = PLAY;
+        vs[0].next_at = vs[1].next_at = next_at;
+    } else {                                    /* TAIL */
         state = IDLE;
         bk4819_tone_tx(0);
         tx_stop();                              /* no Roger, no squelch tail: those are for voice */
-        break;
+        bk4819_fsk_restore();
     }
 }
