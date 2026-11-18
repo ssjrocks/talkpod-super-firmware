@@ -53,7 +53,7 @@ VFO tunes 18–1300 MHz, but the BK4819 does not receive or transmit in 660–84
 **Search** (long 4) runs the BK4819's frequency counter. It finds the strongest carrier nearby and
 puts it in the VFO.
 
-**Frequency scanner** (first item in the menu): type **From** and **To** in MHz, the same way as a
+**Frequency scanner** (menu, 5 Scan): type **From** and **To** in MHz, the same way as a
 VFO frequency (MENU moves on), choose the **Step** and the **Mode** with UP / DOWN, and MENU starts
 it. It remembers all of them. It runs on the main screen, shows `SCAN`, and stops on a signal; **Scan resume** in the menu
 says when it moves on (by default 2 s after the signal ends). UP and DOWN set the scan's direction
@@ -129,51 +129,90 @@ Both are privacy against casual listening, not security.
 
 ## Menu
 
-UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), BACK
-leaves. Settings are saved 3 s after the last change and survive power-off. They're stock's own settings where
-stock has the same one. Talkpod Manager shows them on its Settings page: Read brings in what the radio
-has, Write sends your changes. Side key functions DTMF and Remote aren't there and say so.
+MENU opens a list of categories. UP / DOWN and MENU open one, or press its digit (1–7). In a
+category, UP / DOWN choose an item, MENU starts or ends changing it (UP / DOWN change the value), and
+BACK goes back to the list, then leaves. Settings are saved 3 s after the last change and survive
+power-off. They're stock's own settings where stock has the same one. Talkpod Manager shows them on its
+Settings page: Read brings in what the radio has, Write sends your changes. Side key functions DTMF and
+Remote aren't there and say so.
+
+**On the Messages, Pager and Morse screens, hold A/B** for that screen's own settings (the same items as
+in Data modes); BACK returns to the screen.
+
+**1 Radio**
 
 | Item | Values |
 |---|---|
-| Freq scanner | scans a frequency range: see above |
-| Messages | opens the Messages screen (shows how many are new) |
-| Pager | opens the Pager screen |
-| Morse | opens the Morse screen (shows its speed) |
 | Squelch | 0–9 |
 | Step | 2.5, 5, 6.25, 10, 12.5, 25, 100 kHz, 1 MHz, then 1 kHz, 100 Hz, 10 Hz for SSB |
 | Bandwidth | wide / narrow (VFO slot; a channel has its own) |
 | Modulation | FM, AM, SSB (VFO slot) |
 | Dual watch | on / off |
-| Backlight | always on, 5, 10, 15, 20, 30 s, 1, 2, 3 min |
-| TX timeout | off, 30 s, 60 s, 2, 4, 8 min |
-| Msg speed | 1200 (default), 700, 450 bit/s for text messages; both radios must match |
-| Msg receipts | on: answer received messages with a delivery receipt |
-| Pager RIC | the pager address the Pager screen sends to (0–2097151) |
-| Pager speed | 512, 1200, 2400 bit/s |
-| Pager invert | send and receive pages the other way round from standard POCSAG (for a sender or receiver that uses the opposite polarity); off for pagers, multimon-ng, PDW |
-| Scramble key | the key Rolling channels use (up to 14 characters, the same on every radio) |
-| Key beep | on / off |
-| Voice | on / off (power-on sound, then the mode spoken after it; channel/frequency mode, high/low) |
-| Scan channels | starts the channel scan |
-| Battery save | off, Normal, Super, Deep: 3 minutes after the last activity the receiver sleeps and listens in turns |
-| VOX | off, 1–10 (the mic level that keys the transmitter; higher needs more) |
-| VOX delay | how long it keeps transmitting after you stop, 0.5–2 s |
-| PTT-ID delay | wait before the PTT-ID at key-up |
-| Alarm | what a side key set to SOS does: Local (speaker), Tone (on the air), Code (on the air, with the ANI code) |
-| Alarm sound | the Local alarm's sound with Tone / Code too, when not transmitting |
-| Scan resume | Time (moves on after 5 s), Carrier (2 s after the signal ends), Stop (stays) |
-| Slot A shows, Slot B shows | a channel's name, frequency or number, large |
-| Auto lock | locks the keys after 5, 10, 15 s |
 | TX slot | with dual watch: Selected, or always slot A or B |
+| TX timeout | off, 30 s, 60 s, 2, 4, 8 min |
+
+**2 Transmit**
+
+| Item | Values |
+|---|---|
 | Roger | off, Beep, Tone1200 |
 | Tail cut | sends the squelch tail, and mutes on one received |
 | Rpt tail cut, Rpt tail wait | keep the speaker muted this long after transmitting, for a repeater's tail |
 | Tone burst | 1000, 1450, 1750, 2100 Hz |
+| VOX | off, 1–10 (the mic level that keys the transmitter; higher needs more) |
+| VOX delay | how long it keeps transmitting after you stop, 0.5–2 s |
+| PTT-ID delay | wait before the PTT-ID at key-up |
+
+**3 Screen & sound**
+
+| Item | Values |
+|---|---|
+| Backlight | always on, 5, 10, 15, 20, 30 s, 1, 2, 3 min |
+| Slot A shows, Slot B shows | a channel's name, frequency or number, large |
 | Power-on | Logo (the boot splash) or Voltage |
+| Key beep | on / off |
+| Voice | on / off (power-on sound, then the mode spoken after it; channel/frequency mode, high/low) |
 | Menu exit | leaves the menu after this long without a key |
-| Side 2, Side 2 long, Side 1, Top key | FM radio, TX power, Scan, Search, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
-| About | firmware version, board, battery, number of channels |
+
+**4 Keys**
+
+| Item | Values |
+|---|---|
+| Side 1, Side 2, Side 2 long, Top key | FM radio, TX power, Scan, Search, Monitor, PTT B, SOS, DTMF, Reverse, Remote, or Off |
+| Auto lock | locks the keys after 5, 10, 15 s |
+
+**5 Scan**
+
+| Item | Values |
+|---|---|
+| Freq scanner | scans a frequency range: see above |
+| Scan channels | starts the channel scan |
+| Scan resume | Time (moves on after 5 s), Carrier (2 s after the signal ends), Stop (stays) |
+
+**6 Data modes**
+
+| Item | Values |
+|---|---|
+| Messages | opens the Messages screen (shows how many are new) |
+| Msg speed | 1200 (default), 700, 450 bit/s for text messages; both radios must match |
+| Msg receipts | on: answer received messages with a delivery receipt |
+| Pager | opens the Pager screen |
+| Pager RIC | the pager address the Pager screen sends to (0–2097151) |
+| Pager speed | 512, 1200, 2400 bit/s |
+| Pager invert | send and receive pages the other way round from standard POCSAG (for a sender or receiver that uses the opposite polarity); off for pagers, multimon-ng, PDW |
+| Morse | opens the Morse screen |
+| Morse speed | 5–40 WPM (also UP / DOWN on the Morse screen), until power-off |
+
+**7 Other**
+
+| Item | Values |
+|---|---|
+| Battery save | off, Normal, Super, Deep: 3 minutes after the last activity the receiver sleeps and listens in turns |
+| Alarm | what a side key set to SOS does: Local (speaker), Tone (on the air), Code (on the air, with the ANI code) |
+| Alarm sound | the Local alarm's sound with Tone / Code too, when not transmitting |
+| Scramble key | the key Rolling channels use (up to 14 characters, the same on every radio) |
+
+**About**: firmware version, board, battery, number of channels.
 
 ## FM radio
 
@@ -266,7 +305,7 @@ POCSAG at the menu's **Pager speed**.
 
 - Received pages list the RIC and the text (numeric or alphanumeric); single bit errors are
   corrected.
-- Type a page and press MENU: it goes to **Pager RIC** (menu), or to the RIC of the page picked
+- Type a page and press MENU: it goes to **Pager RIC** (hold A/B, or menu 6 Data modes), or to the RIC of the page picked
   with UP. All digits (and space, `-`, `U`, `(`, `)`) are sent as a numeric page, anything else as
   alphanumeric. MENU with nothing typed sends a tone-only page.
 

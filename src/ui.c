@@ -419,12 +419,37 @@ static const stock_item_t stock_items[] = {
 #define STOCK_ITEMS 22
 
 enum { M_FSCAN, M_MESSAGES, M_PAGER, M_MORSE, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
-       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
-       M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS, M_COUNT };
+       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN, M_MORSE_WPM,
+       M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS };
 static const char *const menu_names[M_STOCK] = {
     "Freq scanner", "Messages", "Pager", "Morse", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
-    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
+    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels", "Morse speed",
 };
+
+/* The menu is a list of categories (MENU or digits 1-7 open one), each at most a screen or so of items.
+   Holding A/B on the Messages, Pager and Morse screens opens their own settings (the panels, slices of
+   Data modes), and BACK returns to that screen. */
+#define ST(i) (M_STOCK + (i))
+static const uint8_t cat_radio[] = {M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, ST(10), M_TOT};
+static const uint8_t cat_tx[] = {ST(11), ST(12), ST(13), ST(14), ST(15), ST(1), ST(2), ST(3)};
+static const uint8_t cat_screen[] = {M_BACKLIGHT, ST(7), ST(8), ST(16), M_KEYBEEP, M_VOICE, ST(17)};
+static const uint8_t cat_keys[] = {ST(20), ST(18), ST(19), ST(21), ST(9)};
+static const uint8_t cat_scan[] = {M_FSCAN, M_SCAN, ST(6)};
+static const uint8_t cat_data[] = {M_MESSAGES, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER, M_PAGER_RIC, M_PAGER_SPEED,
+                                   M_PAGER_INVERT, M_MORSE, M_MORSE_WPM};
+static const uint8_t cat_other[] = {ST(0), ST(4), ST(5), M_ROLL_KEY};
+typedef struct {
+    const char *name;
+    const uint8_t *items;
+    uint8_t n;
+} menu_cat_t;
+#define CAT(name, a) {name, a, sizeof a}
+static const menu_cat_t cats[] = {
+    CAT("Radio", cat_radio), CAT("Transmit", cat_tx), CAT("Screen & sound", cat_screen), CAT("Keys", cat_keys),
+    CAT("Scan", cat_scan), CAT("Data modes", cat_data), CAT("Other", cat_other),
+    {"Messages", cat_data + 1, 2}, {"Pager", cat_data + 4, 3}, {"Morse", cat_data + 8, 1},
+};
+enum { CATS = 7, PANEL_MSG = CATS, PANEL_PAGER, PANEL_MORSE, TOP = 0xFF };
 
 static const char *menu_name(int i)
 {
@@ -450,7 +475,18 @@ static void stock_change(const stock_item_t *it, int dir)
 static const char *const msg_speed_names[] = {"1200", "700", "450"};
 static const char *const mod_names[] = {"FM", "AM", "SSB"};
 #define MENU_ROWS 8                     /* rows on screen; the list scrolls */
-static uint8_t menu_pos, menu_top, editing;
+static uint8_t menu_pos, menu_top, editing;   /* the row picked, the first row shown, changing a value */
+static uint8_t menu_cat = TOP, menu_back, top_pos;   /* the list shown; the screen BACK returns to (a panel's) */
+
+static int menu_len(void)
+{
+    return menu_cat == TOP ? CATS + 1 : cats[menu_cat].n;
+}
+
+static int menu_item(int r)                     /* row r's item: -1 for a category */
+{
+    return menu_cat != TOP ? cats[menu_cat].items[r] : r < CATS ? -1 : M_ABOUT;
+}
 
 static void menu_value(int item, char *s)
 {
@@ -468,7 +504,7 @@ static void menu_value(int item, char *s)
     case M_MSG_SPEED:  put_str(s, msg_speed_names[msg_modem()]); break;
     case M_MSG_RECEIPTS: put_str(s, msg_receipts() ? "On" : "Off"); break;
     case M_PAGER_RIC:  put_dec(s, pager_cfg.ric); break;
-    case M_MORSE:      put_str(put_dec(s, morse_wpm), " WPM"); break;
+    case M_MORSE_WPM:  put_str(put_dec(s, morse_wpm), " WPM"); break;
     case M_PAGER_SPEED: put_dec(s, pager_bauds[pager_cfg.speed]); break;
     case M_PAGER_INVERT: put_str(s, pager_cfg.invert ? "On" : "Off"); break;
     case M_ROLL_KEY:   put_str(s, roll_cfg.key[0] ? "set" : "not set"); break;
@@ -483,17 +519,23 @@ static void menu_value(int item, char *s)
 
 static void draw_menu_row(int i)
 {
-    if (i < menu_top || i >= menu_top + MENU_ROWS)
+    if (i < menu_top || i >= menu_top + MENU_ROWS || i >= menu_len())
         return;
-    int y = 16 + (i - menu_top) * 13, sel = i == menu_pos;
+    int y = 16 + (i - menu_top) * 13, sel = i == menu_pos, item = menu_item(i);
     uint16_t bg = sel ? C_PANEL2 : C_BG;
-    char v[16];
+    char v[16], t[20];
     if (sel)
         gfx_rrect(2, y - 1, 124, 13, bg);
     else
         lcd_fill(2, y - 1, 124, 13, bg);
-    gfx_text(6, y + 1, &font_6x10, menu_name(i), C_TEXT, bg);
-    menu_value(i, v);
+    if (item < 0) {
+        put_str(put_str(put_dec(t, (uint32_t)i + 1), " "), cats[i].name);
+        put_str(v, ">");
+    } else {
+        put_str(t, menu_name(item));
+        menu_value(item, v);
+    }
+    gfx_text(6, y + 1, &font_6x10, t, C_TEXT, bg);
     gfx_text(122 - gfx_text_width(&font_6x10, v), y + 1, &font_6x10, v,
              sel && editing ? C_AMBER : C_DIM, bg);
 }
@@ -502,8 +544,8 @@ static void draw_menu_header(void)
 {
     char s[8];
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
-    gfx_text(4, 1, &font_7x13b, "Menu", C_TEXT, C_PANEL);
-    put_dec(put_str(put_dec(s, menu_pos + 1u), "/"), M_COUNT);
+    gfx_text(4, 1, &font_7x13b, menu_cat == TOP ? "Menu" : cats[menu_cat].name, C_TEXT, C_PANEL);
+    put_dec(put_str(put_dec(s, menu_pos + 1u), "/"), (uint32_t)menu_len());
     gfx_text(124 - gfx_text_width(&font_5x8, s), 4, &font_5x8, s, C_DIM, C_PANEL);
 }
 
@@ -511,7 +553,7 @@ static void draw_menu(void)
 {
     draw_menu_header();
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
-    for (int i = 0; i < M_COUNT; i++)
+    for (int i = menu_top; i < menu_len(); i++)
         draw_menu_row(i);
 }
 
@@ -949,6 +991,7 @@ static char fs_digits[8];
 
 static void stop_activity(void);
 static void open_morse(void);
+static void open_panel(int c, int back);
 static void draw_morse(void);
 
 static uint32_t fs_value(int field)
@@ -1598,6 +1641,10 @@ static void key_main(const key_event_t *ev)
         } else if (!busy) {
             screen = SCR_MENU;
             editing = 0;
+            menu_cat = TOP;
+            menu_back = 0;
+            menu_pos = top_pos;
+            menu_top = 0;
             snd(SND_MENU);
             draw_menu();
         }
@@ -1823,6 +1870,10 @@ static void send_message(void)
 
 static void key_msg(const key_event_t *ev)
 {
+    if (ev->key == KEY_AB && ev->type == KEV_LONG) {
+        open_panel(PANEL_MSG, SCR_MSG);
+        return;
+    }
     if (hist_key(ev) || text_key(ev, comp, &comp_len, MSG_TEXT, 0)) {
         draw_msg_compose();
         return;
@@ -1887,6 +1938,10 @@ static void pager_send(void)
 
 static void key_pager(const key_event_t *ev)
 {
+    if (ev->key == KEY_AB && ev->type == KEV_LONG) {
+        open_panel(PANEL_PAGER, SCR_PAGER);
+        return;
+    }
     if (hist_key(ev) || text_key(ev, comp, &comp_len, PAGE_TEXT, E_TEXT)) {
         draw_pager();
         return;
@@ -1971,7 +2026,8 @@ static void key_edit(const key_event_t *ev)
 static void menu_change(int dir)
 {
     slot_t *s = watch_slot(watch_selected());
-    switch (menu_pos) {
+    int item = menu_item(menu_pos);
+    switch (item) {
     case M_SQUELCH:
         radio_set_squelch((radio_squelch() + 10 + dir) % 10);
         break;
@@ -2020,18 +2076,46 @@ static void menu_change(int dir)
     case M_VOICE:
         stock.voice ^= 1;
         break;
-    default:
-        if (menu_pos >= M_STOCK && menu_pos < M_ABOUT)
-            stock_change(&stock_items[menu_pos - M_STOCK], dir);
+    case M_MORSE_WPM: {
+        int w = morse_wpm + 5 * dir;
+        morse_wpm = (uint8_t)(w < 5 ? 5 : w > 40 ? 40 : w);
         break;
     }
+    default:
+        if (item >= M_STOCK && item < M_ABOUT)
+            stock_change(&stock_items[item - M_STOCK], dir);
+        break;
+    }
+}
+
+static void menu_open_cat(int c, int back)    /* back: the screen BACK returns to (a panel), or 0 */
+{
+    if (menu_cat == TOP && !back)
+        top_pos = (uint8_t)c;                   /* BACK picks this category again */
+    menu_cat = (uint8_t)c;
+    menu_back = (uint8_t)back;
+    menu_pos = menu_top = 0;
+    editing = 0;
+    draw_menu();
+}
+
+static void open_panel(int c, int back)         /* A/B held on the Messages, Pager or Morse screen */
+{
+    snd(SND_MENU);
+    screen = SCR_MENU;
+    menu_open_cat(c, back);
 }
 
 static void key_menu(const key_event_t *ev)
 {
     if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
         return;
-    int old = menu_pos;
+    int old = menu_pos, n = menu_len(), item = menu_item(menu_pos), d = digit_of(ev->key);
+    if (menu_cat == TOP && ev->type == KEV_PRESS && d >= 1 && d <= CATS) {
+        snd(SND_OPEN);
+        menu_open_cat(d - 1, 0);
+        return;
+    }
     switch (ev->key) {
     case KEY_UP:
     case KEY_DOWN: {
@@ -2040,7 +2124,7 @@ static void key_menu(const key_event_t *ev)
             menu_change(ev->key == KEY_UP ? 1 : -1);
             draw_menu_row(menu_pos);
         } else {
-            menu_pos = (uint8_t)((menu_pos + M_COUNT + dir) % M_COUNT);
+            menu_pos = (uint8_t)((menu_pos + n + dir) % n);
             int top = menu_top;
             if (menu_pos < menu_top)
                 menu_top = menu_pos;
@@ -2058,21 +2142,23 @@ static void key_menu(const key_event_t *ev)
     }
     case KEY_MENU:
         snd(SND_OPEN);
-        if (menu_pos == M_SCAN) {
+        if (item < 0) {
+            menu_open_cat(menu_pos, 0);
+        } else if (item == M_SCAN) {
             screen = SCR_MAIN;
             start_scan();
             draw_main();
-        } else if (menu_pos == M_FSCAN) {
+        } else if (item == M_FSCAN) {
             open_fscan();
-        } else if (menu_pos == M_MESSAGES) {
+        } else if (item == M_MESSAGES) {
             open_messages();
-        } else if (menu_pos == M_PAGER) {
+        } else if (item == M_PAGER) {
             open_pager();
-        } else if (menu_pos == M_MORSE) {
+        } else if (item == M_MORSE) {
             open_morse();
-        } else if (menu_pos == M_PAGER_RIC || menu_pos == M_ROLL_KEY) {
-            open_edit(menu_pos == M_PAGER_RIC ? E_RIC : E_KEY);
-        } else if (menu_pos == M_ABOUT) {
+        } else if (item == M_PAGER_RIC || item == M_ROLL_KEY) {
+            open_edit(item == M_PAGER_RIC ? E_RIC : E_KEY);
+        } else if (item == M_ABOUT) {
             screen = SCR_ABOUT;
             draw_about();
         } else {
@@ -2085,9 +2171,19 @@ static void key_menu(const key_event_t *ev)
         if (editing) {
             editing = 0;
             draw_menu_row(menu_pos);
-        } else {
+        } else if (menu_cat == TOP) {
             screen = SCR_MAIN;
             draw_main();
+        } else if (menu_back) {                 /* a panel: back to its screen */
+            screen = menu_back;
+            menu_back = 0;
+            menu_cat = TOP;
+            redraw();
+        } else {
+            menu_cat = TOP;
+            menu_pos = top_pos;
+            menu_top = 0;
+            draw_menu();
         }
         break;
     default:
@@ -2218,6 +2314,10 @@ static void send_morse(void)
 
 static void key_morse(const key_event_t *ev)
 {
+    if (!morse_on && ev->key == KEY_AB && ev->type == KEV_LONG) {
+        open_panel(PANEL_MORSE, SCR_MORSE);
+        return;
+    }
     if (!morse_on && (hist_key(ev) || text_key(ev, comp, &comp_len, MORSE_TEXT, E_TEXT))) {
         draw_morse_compose();
         return;
@@ -2773,6 +2873,7 @@ void ui_tick(void)
     }
     if (screen == SCR_MENU && !tx_active() && now - last_key > quit_s[stock.menuquit] * 1000u) {
         editing = 0;
+        menu_back = 0;
         screen = SCR_MAIN;
         draw_main();
     }
