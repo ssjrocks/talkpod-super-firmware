@@ -150,9 +150,28 @@ demodulator instead (`BK_FSK_AFSK` in `drivers/bk4819.c`):
   sender and number) are acked but listed once. An ack for one of our messages marks it with `+`.
 
 **Verified:** in the emulator, with captures made by `tools/aprs_emu.py rx`, which models an ideal
-demodulator. **Unknown:** whether the BK4819's FFSK demodulator decides Bell 202 tones reliably
-enough. If it does not, APRS receive on this hardware would need an audio path to the MCU that the
-board does not have.
+demodulator.
+
+**On air (2026-11-18, a HackRF sending packets Direwolf decodes): APRS receiving does not work.**
+- FFSK 1200/2400 (REG_58 0x3309): syncs on the flags now and then; after the sync the FIFO holds a few
+  bytes of slipped flags, then nothing (the rest of the capture is the last word read again).
+- FFSK 1200/1800 (0x3F03): syncs every time, but the FIFO gives one fixed byte for the whole capture.
+  The chip's noise squelch closing on the 2200 Hz tone was ruled out (REG_4F 7F7E, same result).
+- Direct FSK as a 1-bit sampler of the received audio (shell `S`, 1.31-1.32): at 4400-6000 bit/s the
+  receiver does follow the tones on average (sign changes per sample: 1.0 on 2200 Hz, 0.55 on 1200 Hz
+  over 10 ms), and a 2-byte sync catches the flags (`CCCC` at 4800 for 1200 Hz runs, `AAAA` at 4400 for
+  2200 Hz runs). But bit by bit 27-34 % of the tone decisions are wrong at every rate (4400, 4800, 6000)
+  and bandwidth field (0, 3, 4, 5, 7) tried, with a correlation detector as well as zero-crossing
+  counts: the receiver re-times its samples to the transitions and smears single bits. A packet needs
+  hundreds of bits without an error.
+- One sync gives at most 255 bytes (REG_5D; 0 gives empty packets). Rewriting REG_5D during a capture
+  or not re-arming after "packet complete" doesn't extend it.
+- Reading the FIFO a word per flag only keeps up when the loop polls continuously: at 4400 bit/s a
+  screen redraw left the almost-full flag set and no more flags came.
+
+So receiving APRS on this board would need the received audio on an MCU ADC pin (a hardware change).
+UV-K5 firmware developers reached the same point: nobody reports APRS receive on the BK4819
+(github.com/piotr022/UV_K5_playground/issues/20).
 
 ## POCSAG
 
