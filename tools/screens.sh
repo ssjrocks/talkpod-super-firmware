@@ -33,7 +33,7 @@ shot fs-run --flash "$flash" --ms 5000 --keys "$range" --signal-at 12160000 --bk
 
 keys="600:MENU:60"
 t=800
-for _ in $(seq 1 30); do
+for _ in $(seq 1 26); do
     keys+=",$t:DOWN:40"
     t=$((t + 120))
 done
@@ -46,9 +46,6 @@ shot settings2 --flash "$flash" --ms $((t + 300)) --keys "$keys"
 
 shot ssb --flash "$flash" --ms 3000 --keys 800:MENU:800,2000:FM:80,2500:FM:80
 shot messages --flash "$flash" --ms 3800 --keys 500:5:800 --fsk-rx "2000:$(msg 'on my way, 10 min')"
-shot aprs --flash "$flash" --ms 4300 --keys 1500:7:900 \
-    --fsk-rx "2600:$(.venv/bin/python tools/aprs_emu.py rx N0CALL-9 APDR16 '!3351.20S/15112.40E>Mobile 146.5')" \
-    --fsk-rx "3300:$(.venv/bin/python tools/aprs_emu.py rx N0CALL-7 APK004 '!3340.00S/15100.00E>Hiking')"
 shot pager --flash "$flash" --ms 4000 --keys 1500:8:900 \
     --fsk-rx "2500:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'TEST PAGE FROM THE BENCH')" \
     --fsk-rx "3000:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'RADIO CHECK OK')"
@@ -69,7 +66,7 @@ from PIL import Image, ImageDraw, ImageFont
 SCREENS = [("main", "dual watch"), ("rx", "receiving"), ("tx", "transmitting"), ("menu", "menu"),
            ("fs-setup", "frequency scanner: range"), ("fs-run", "frequency scanner: stopped on a signal, AM"),
            ("settings", "settings, stock's included"), ("settings2", "Roger, tail cut and more"),
-           ("ssb", "SSB receive on a VFO"), ("messages", "text messages"), ("aprs", "APRS heard"),
+           ("ssb", "SSB receive on a VFO"), ("messages", "text messages"),
            ("pager", "POCSAG pager"), ("morse", "Morse code going out"), ("history", "hold FM: a text sent before"),
            ("splash", "boot splash"), ("about", "about")]
 SIZE, GAP, LABEL = 384, 24, 34

@@ -24,17 +24,10 @@
  *                 "no splash"; the screen returns to what it showed
  *   k KEY / K KEY press a key / hold it (a long press): MENU UP DOWN BACK 0-9 A/B FM TOP SIDE1
  *                 SIDE2, any case; not PTT. The display wakes first, so the key always acts
- *   T TEXT        the open typing screen's text (Messages, APRS, Pager, Morse), cut to its limit:
+ *   T TEXT        the open typing screen's text (Messages, Pager, Morse), cut to its limit:
  *                 "ok N", or "no typing screen"
- *   h             the pages and APRS packets on the radio, newest first: "page< FROM TEXT" for a
- *                 received one, "page> TO TEXT" for a sent one, "aprs<" / "aprs>" alike, then "END"
- *   S RATE SYNC LEN BW [MODE]  the direct-FSK receiver as a fast 1-bit sampler of the received audio (APRS
- *                 research): RATE bit/s, the 32-bit SYNC (hex) it waits for, LEN bytes per packet (REG_5D),
- *                 BW REG_58's bandwidth field (0 1.2K, 4 2.4K). "S" marks a sync, then every FIFO word goes
- *                 out as 4 hex digits as it arrives; "C" marks a packet complete (re-armed for the next sync).
- *                 MODE bits: 1 rewrite REG_5D every 32 words, 2 don't re-arm at a packet complete, 4 a 2-byte
- *                 sync (SYNC's low 16 bits). It ends with "END words" after 3 s without a word (15 s before the
- *                 first sync) or on any byte
+ *   h             the pages on the radio, newest first: "page< FROM TEXT" for a received one,
+ *                 "page> TO TEXT" for a sent one, then "END"
  * See docs/serial-interface.md.
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop by shell_poll().
@@ -54,7 +47,6 @@
 #include "evlog.h"
 #include "keypad.h"
 #include "pocsag.h"
-#include "aprs.h"
 
 static char line[160];                  /* T carries a whole text */
 static volatile uint8_t line_len, line_ready;
@@ -242,61 +234,11 @@ static void entry(const char *kind, int out, const char *from, const char *text)
     debug_puts("\r\n");
 }
 
-static void sampler(const char *p)
-{
-    uint32_t rate = parse_num(&p, 10), sync = parse_num(&p, 16), len = parse_num(&p, 10), bw = parse_num(&p, 10);
-    uint32_t mode = parse_num(&p, 10), last = millis(), words = 0;
-    uint16_t arm = mode & 4 ? 0x0000 : 0x0008;          /* REG_59 bit 3: a 4-byte sync */
-    int synced = 0;
-    bk4819_write(0x70, 0x00E0);
-    bk4819_write(0x72, (uint16_t)((rate * 103244U + 5000) / 10000));
-    bk4819_write(0x58, (uint16_t)(3u << 8 | 3u << 4 | (bw & 7) << 1 | 1));
-    bk4819_write(0x5A, (uint16_t)(mode & 4 ? sync : sync >> 16));
-    bk4819_write(0x5B, (uint16_t)sync);
-    bk4819_write(0x5C, 0x5625);
-    bk4819_write(0x5E, 64u << 3 | 1);
-    bk4819_write(0x5D, (uint16_t)(len << 8));
-    bk4819_write(0x59, 0xC000 | arm);
-    bk4819_write(0x59, 0x1000 | arm);
-    debug_puts("sampling\r\n");
-    while (millis() - last < (synced ? 3000u : 15000u) && debug_getc() < 0) {
-        fwdgt_feed();
-        uint16_t f = bk4819_irq();
-        if (f & 0x0002) {
-            synced = 1;
-            last = millis();
-            debug_puts("\r\nS\r\n");
-        }
-        if (f & 0x1000) {
-            debug_hex16(bk4819_fsk_word());
-            words++;
-            last = millis();
-            if ((mode & 1) && !(words & 31))
-                bk4819_write(0x5D, (uint16_t)(len << 8));
-        }
-        if (f & 0x2000) {
-            debug_puts("\r\nC\r\n");
-            if (!(mode & 2)) {
-                bk4819_write(0x59, 0xC000 | arm);
-                bk4819_write(0x59, 0x1000 | arm);
-            }
-        }
-    }
-    debug_puts("\r\nEND ");
-    put_dec((int)words);
-    debug_puts("\r\n");
-    restore();
-}
-
 static void list(void)
 {
     for (int i = 0; i < pocsag_count(); i++) {
         const page_t *pg = pocsag_get(i);
         entry("page", pg->flags & PAGE_OUT, pg->from, pg->text);
-    }
-    for (int i = 0; i < aprs_count(); i++) {
-        const aprs_pkt_t *a = aprs_get(i);
-        entry("aprs", a->flags & APRS_OUT, a->from, a->text);
     }
     debug_puts("END\r\n");
 }
@@ -510,12 +452,9 @@ void shell_poll(void)
     case 'h':
         list();
         break;
-    case 'S':
-        sampler(p);
-        break;
     default:
         debug_puts("r RR | w RR VVVV | x/X ADDR LEN | E ADDR | W ADDR LEN | P ID | d | f HZ | s L | "
-                   "t HZ | b | m HZ N | v LO HI ST N | i | G | L | l | k/K KEY | T TEXT | h | S RATE SYNC LEN BW MODE\r\n");
+                   "t HZ | b | m HZ N | v LO HI ST N | i | G | L | l | k/K KEY | T TEXT | h\r\n");
     }
     line_len = 0;
     line_ready = 0;

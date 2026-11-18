@@ -1,4 +1,4 @@
-/* The texts sent from Messages, APRS, the pager and Morse, for the typing screens' history (hold FM).
+/* The texts sent from Messages, the pager and Morse, for the typing screens' history (hold FM).
  * They are in the external flash at FLASH_SENT, so they outlive power-off: two 4 KB sectors written in
  * turn, records of REC bytes {u16 magic, u8 length, u8 kind, the text, zeros, u16 sequence, u16
  * CRC-16/XMODEM}. When the sector being written is full, the other one is erased and written next, so

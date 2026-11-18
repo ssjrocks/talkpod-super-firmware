@@ -5,7 +5,7 @@
 
 /* The texts sent from the typing screens, newest first, kept in the external flash (src/sent.c) */
 #define SENT_TEXT 144                   /* the longest a screen sends (Morse) */
-enum { SENT_MSG, SENT_APRS, SENT_PAGER, SENT_MORSE };
+enum { SENT_MSG, SENT_APRS, SENT_PAGER, SENT_MORSE };   /* stored: SENT_APRS kept for texts sent until 1.32 */
 
 void sent_add(const char *text, int kind);      /* the same text as the newest isn't kept twice */
 int  sent_count(void);

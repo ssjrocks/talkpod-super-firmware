@@ -3,7 +3,7 @@
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK
  * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 5 messages, 6 scan,
- * 7 APRS, 8 pager, MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
+ * 8 pager, MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
  * monitor while held, side key 2 starts/stops the channel scan. During a scan 0 locks the channel
  * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
  * or switch the modulation.
@@ -27,7 +27,6 @@
 #include "voice.h"
 #include "tx.h"
 #include "msg.h"
-#include "aprs.h"
 #include "morse.h"
 #include "sent.h"
 #include "pocsag.h"
@@ -50,7 +49,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_APRS, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM, SCR_MORSE };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM, SCR_MORSE };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000, 100, 10, 1};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M",
@@ -419,14 +418,12 @@ static const stock_item_t stock_items[] = {
 };
 #define STOCK_ITEMS 22
 
-enum { M_FSCAN, M_MESSAGES, M_APRS, M_PAGER, M_MORSE, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
-       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_APRS_CALL, M_APRS_PATH, M_APRS_TEXT,
-       M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
+enum { M_FSCAN, M_MESSAGES, M_PAGER, M_MORSE, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
+       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN,
        M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS, M_COUNT };
 static const char *const menu_names[M_STOCK] = {
-    "Freq scanner", "Messages", "APRS", "Pager", "Morse", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
-    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "APRS call", "APRS path", "APRS beacon",
-    "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
+    "Freq scanner", "Messages", "Pager", "Morse", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
+    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels",
 };
 
 static const char *menu_name(int i)
@@ -470,13 +467,6 @@ static void menu_value(int item, char *s)
     case M_MESSAGES:   if (msg_unread()) put_str(put_dec(s, (uint32_t)msg_unread()), " new"); break;
     case M_MSG_SPEED:  put_str(s, msg_speed_names[msg_modem()]); break;
     case M_MSG_RECEIPTS: put_str(s, msg_receipts() ? "On" : "Off"); break;
-    case M_APRS:       if (aprs_unread()) put_str(put_dec(s, (uint32_t)aprs_unread()), " new"); break;
-    case M_APRS_CALL:  put_str(s, aprs_cfg.call[0] ? aprs_cfg.call : "not set"); break;
-    case M_APRS_PATH:  put_str(s, aprs_path_names[aprs_cfg.path & 3]); break;
-    case M_APRS_TEXT:
-        memcpy(s, aprs_cfg.text, 9);
-        s[9] = 0;
-        break;
     case M_PAGER_RIC:  put_dec(s, pager_cfg.ric); break;
     case M_MORSE:      put_str(put_dec(s, morse_wpm), " WPM"); break;
     case M_PAGER_SPEED: put_dec(s, pager_bauds[pager_cfg.speed]); break;
@@ -561,7 +551,7 @@ static void draw_about(void)
 static const char *const key_chars[10] = {
     " 0", ".,?!-'/@1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
 };
-static char comp[SENT_TEXT + 1];        /* what is typed: Messages, APRS, Pager, Morse */
+static char comp[SENT_TEXT + 1];        /* what is typed: Messages, Pager, Morse */
 static uint8_t comp_len, tap_key = 0xFF, tap_n, tap_shown, lower, msg_scroll;
 static uint8_t comp_max = MSG_TEXT;     /* the open screen's limit */
 
@@ -696,16 +686,13 @@ static void open_messages(void)
 
 static int digit_of(int key);
 
-enum { E_TEXT, E_CALL, E_RIC, E_KEY };   /* what is typed: any text, a callsign, digits, a key */
+enum { E_TEXT, E_RIC, E_KEY };          /* what is typed: any text, digits, a key */
 
 /* a key typed into buf (len characters, at most max) */
 static void type_key(char *buf, uint8_t *len, int max, int digit, int hold, int kind)
 {
-    static const char *const call_chars[10] = {
-        "0", "-1", "ABC2", "DEF3", "GHI4", "JKL5", "MNO6", "PQRS7", "TUV8", "WXYZ9",
-    };
     char one[2] = {(char)('0' + digit), 0};
-    const char *set = kind == E_RIC ? one : (kind == E_CALL ? call_chars : key_chars)[digit];
+    const char *set = kind == E_RIC ? one : key_chars[digit];
     uint32_t now = millis();
     if (!hold && digit == tap_key && now - tap_at < TAP_MS && *len) {
         tap_n = (uint8_t)((tap_n + 1) % strlen(set));
@@ -805,23 +792,9 @@ static int hist_key(const key_event_t *ev)
     return 1;
 }
 
-/* ---- APRS screen --------------------------------------------------------------------------- */
+static uint8_t data_mode;               /* what the modem listens for: 0 messages, 1 pages */
 
-/* Heard stations and our own packets, newest at the bottom; up/down pick one (highlighted), and
-   what is typed below goes to it as an APRS message. MENU with nothing typed sends the beacon. */
-static int8_t aprs_sel = -1;
-static uint8_t data_mode;               /* what the modem listens for: 0 messages, 1 APRS, 2 pager */
-
-static void draw_aprs_header(void)
-{
-    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
-    gfx_text(4, 1, &font_7x13b, "APRS", C_TEXT, C_PANEL);
-    const char *r = aprs_receiving() ? "receiving" : aprs_cfg.call[0] ? aprs_cfg.call : "no call set";
-    gfx_text(124 - gfx_text_width(&font_5x8, r), 4, &font_5x8, r,
-             aprs_receiving() ? C_GREEN : aprs_cfg.call[0] ? C_DIM : C_AMBER, C_PANEL);
-}
-
-/* a list of heard / sent entries (APRS, pager), newest at the bottom, sel highlighted and shown
+/* a list of heard / sent pages, newest at the bottom, sel highlighted and shown
    at the bottom; row() gives an entry's coloured head (call, RIC) and its text */
 typedef struct {
     char head[12];
@@ -862,51 +835,6 @@ static void draw_rows(int count, int sel, void (*row)(int i, row_t *r), const ch
             }
         }
     }
-}
-
-static void aprs_row(int i, row_t *r)
-{
-    const aprs_pkt_t *p = aprs_get(i);
-    int out = p->flags & APRS_OUT;
-    put_str(put_str(r->head, out ? (p->flags & APRS_ACKED ? "+" : ">") : ""), p->from);
-    r->text = p->text;
-    r->color = out ? C_CYAN : p->flags & APRS_TO_ME ? C_AMBER : C_GREEN;
-}
-
-static void draw_aprs_list(void)
-{
-    static const char *const empty[] = {
-        "Nothing heard yet.", "MENU sends a beacon on", "the selected slot. Set",
-        "APRS call in the menu.", "Receiving: experimental", 0,
-    };
-    draw_rows(aprs_count(), aprs_sel, aprs_row, empty);
-}
-
-static void draw_aprs_compose(void)
-{
-    char s[24];
-    const aprs_pkt_t *p = aprs_sel >= 0 ? aprs_get(aprs_sel) : 0;
-    if (comp_len)
-        put_str(put_str(put_str(s, "to "), p ? p->from : "?"), "  MENU send");
-    else
-        put_str(s, p ? "type to message" : "MENU beacon  up: pick");
-    draw_compose(s);
-}
-
-static void draw_aprs(void)
-{
-    draw_aprs_header();
-    draw_aprs_list();
-    draw_aprs_compose();
-}
-
-static void open_aprs(void)
-{
-    compose_for(APRS_MSG_TEXT);
-    screen = SCR_APRS;
-    aprs_read_all();
-    aprs_sel = -1;
-    draw_aprs();
 }
 
 /* ---- pager screen -------------------------------------------------------------------------- */
@@ -962,11 +890,11 @@ static void open_pager(void)
     draw_pager();
 }
 
-/* ---- text editor (menu: APRS call, APRS beacon, pager RIC, scramble key) ------------------- */
+/* ---- text editor (menu: pager RIC, scramble key) ------------------------------------------- */
 
 static char ebuf[16];
 static uint8_t elen, edit_kind;
-#define EDIT_MAX (edit_kind == E_CALL ? 9 : edit_kind == E_RIC ? 7 : 14)
+#define EDIT_MAX (edit_kind == E_RIC ? 7 : 14)
 
 static void draw_edit_field(void)
 {
@@ -984,13 +912,11 @@ static void draw_edit_field(void)
 
 static void draw_edit(void)
 {
-    static const char *const text[4][3] = {
-        {"APRS beacon", "Status text, sent with", "MENU on the APRS screen"},
-        {"APRS call", "Callsign-SSID, e.g.", "VK2ABC-7 (1 key: -)"},
+    static const char *const text[2][3] = {
         {"Pager RIC", "The pager address the", "pager screen sends to"},
         {"Scramble key", "For Rolling channels;", "the same on every radio"},
     };
-    const char *const *t = text[edit_kind];
+    const char *const *t = text[edit_kind == E_KEY];
     lcd_fill(0, 0, LCD_W, 14, C_PANEL);
     gfx_text(4, 1, &font_7x13b, t[0], C_TEXT, C_PANEL);
     lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
@@ -998,7 +924,7 @@ static void draw_edit(void)
     gfx_text(4, 28, &font_5x8, t[2], C_DIM, C_BG);
     gfx_text(4, 70, &font_5x8, "MENU save", C_DIM, C_BG);
     gfx_text(4, 80, &font_5x8, "BACK delete / cancel", C_DIM, C_BG);
-    if (edit_kind == E_TEXT || edit_kind == E_KEY)
+    if (edit_kind == E_KEY)
         gfx_text(4, 90, &font_5x8, "FM abc / ABC", C_DIM, C_BG);
     draw_edit_field();
 }
@@ -1008,10 +934,8 @@ static void open_edit(int kind)
     edit_kind = (uint8_t)kind;
     if (kind == E_RIC)
         put_dec(ebuf, pager_cfg.ric);
-    else if (kind == E_KEY)
-        strcpy(ebuf, roll_cfg.key);
     else
-        strcpy(ebuf, kind == E_CALL ? aprs_cfg.call : aprs_cfg.text);
+        strcpy(ebuf, roll_cfg.key);
     elen = (uint8_t)strlen(ebuf);
     tap_key = 0xFF;
     screen = SCR_EDIT;
@@ -1281,8 +1205,6 @@ static void redraw(void)
         draw_menu();
     else if (screen == SCR_MSG)
         draw_msg();
-    else if (screen == SCR_APRS)
-        draw_aprs();
     else if (screen == SCR_EDIT)
         draw_edit();
     else if (screen == SCR_PAGER)
@@ -1446,9 +1368,6 @@ static void long_press(int key)
         break;
     case KEY_5:
         open_messages();
-        return;
-    case KEY_7:
-        open_aprs();
         return;
     case KEY_8:
         open_pager();
@@ -1943,83 +1862,6 @@ static void key_msg(const key_event_t *ev)
     }
 }
 
-static void aprs_send(void)
-{
-    slot_t *s = watch_slot(watch_selected());
-    const aprs_pkt_t *p = aprs_sel >= 0 ? aprs_get(aprs_sel) : 0;
-    if (comp_len && (!p || (p->flags & APRS_OUT && !(p->flags & APRS_MSG)))) {
-        show_toast("pick a station: up");
-        draw_aprs_compose();
-        return;
-    }
-    stop_activity();
-    voice_stop();
-    watch_pause(1);
-    tap_key = 0xFF;
-    lcd_fill(0, LCD_H - 10, LCD_W, 10, C_PANEL);
-    gfx_text(1, LCD_H - 9, &font_5x8, "sending...", C_RED, C_PANEL);
-    int r = comp_len ? aprs_message(p->from, comp, s->tx, s->narrow, s->low_power)
-                     : aprs_beacon(s->tx, s->narrow, s->low_power);
-    watch_pause(0);
-    if (r > 0) {
-        debug_puts("APRS sent\r\n");
-        if (comp_len) {
-            sent_add(comp, SENT_APRS);
-            comp_len = 0;
-            comp[0] = 0;
-        }
-        aprs_sel = -1;
-    } else {
-        show_toast(r == -2 ? "set APRS call (menu)" : r < 0 ? "TX not allowed here" : "not sent");
-    }
-    draw_aprs();
-}
-
-static void key_aprs(const key_event_t *ev)
-{
-    if (hist_key(ev) || text_key(ev, comp, &comp_len, APRS_MSG_TEXT, 0)) {
-        draw_aprs_compose();
-        return;
-    }
-    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
-        return;
-    switch (ev->key) {
-    case KEY_MENU:
-        aprs_send();
-        break;
-    case KEY_BACK:
-        snd(SND_CANCEL);
-        tap_key = 0xFF;
-        if (comp_len) {
-            comp[--comp_len] = 0;
-            draw_aprs_compose();
-        } else if (aprs_sel >= 0) {
-            aprs_sel = -1;
-            draw_aprs();
-        } else {
-            screen = SCR_MAIN;
-            draw_main();
-        }
-        break;
-    case KEY_UP:
-        if (aprs_sel + 1 < aprs_count()) {
-            aprs_sel++;
-            draw_aprs_list();
-            draw_aprs_compose();
-        }
-        break;
-    case KEY_DOWN:
-        if (aprs_sel >= 0) {
-            aprs_sel--;
-            draw_aprs_list();
-            draw_aprs_compose();
-        }
-        break;
-    default:
-        break;
-    }
-}
-
 static void pager_send(void)
 {
     slot_t *s = watch_slot(watch_selected());
@@ -2106,12 +1948,9 @@ static void key_edit(const key_event_t *ev)
             }
             pager_cfg.ric = ric;
             pocsag_save();
-        } else if (edit_kind == E_KEY) {
+        } else {
             strcpy(roll_cfg.key, ebuf);
             roll_save();
-        } else {
-            strcpy(edit_kind == E_CALL ? aprs_cfg.call : aprs_cfg.text, ebuf);
-            aprs_save();
         }
         snd(SND_OPEN);
         screen = SCR_MENU;
@@ -2165,10 +2004,6 @@ static void menu_change(int dir)
         break;
     case M_MSG_RECEIPTS:
         msg_set_receipts(!msg_receipts());
-        break;
-    case M_APRS_PATH:
-        aprs_cfg.path = (uint8_t)((aprs_cfg.path + 4 + dir) % 4);
-        aprs_save();
         break;
     case M_PAGER_SPEED:
         pager_cfg.speed = (uint8_t)((pager_cfg.speed + 3 + dir) % 3);
@@ -2231,16 +2066,12 @@ static void key_menu(const key_event_t *ev)
             open_fscan();
         } else if (menu_pos == M_MESSAGES) {
             open_messages();
-        } else if (menu_pos == M_APRS) {
-            open_aprs();
         } else if (menu_pos == M_PAGER) {
             open_pager();
         } else if (menu_pos == M_MORSE) {
             open_morse();
-        } else if (menu_pos == M_APRS_CALL || menu_pos == M_APRS_TEXT || menu_pos == M_PAGER_RIC ||
-                   menu_pos == M_ROLL_KEY) {
-            open_edit(menu_pos == M_APRS_CALL ? E_CALL : menu_pos == M_PAGER_RIC ? E_RIC
-                      : menu_pos == M_ROLL_KEY ? E_KEY : E_TEXT);
+        } else if (menu_pos == M_PAGER_RIC || menu_pos == M_ROLL_KEY) {
+            open_edit(menu_pos == M_PAGER_RIC ? E_RIC : E_KEY);
         } else if (menu_pos == M_ABOUT) {
             screen = SCR_ABOUT;
             draw_about();
@@ -2530,7 +2361,6 @@ static void load_settings(void)
     saved_t v;
     int found;
     stock_load();
-    aprs_init();
     pocsag_init();
     pocsag_apply();
     roll_init();
@@ -2610,7 +2440,7 @@ void ui_wake(void)                      /* so the shell's next key acts instead 
 
 int ui_type(const char *text)
 {
-    if (screen != SCR_MSG && screen != SCR_APRS && screen != SCR_PAGER && screen != SCR_MORSE)
+    if (screen != SCR_MSG && screen != SCR_PAGER && screen != SCR_MORSE)
         return -1;
     int n = (int)strlen(text);
     if (n > comp_max)
@@ -2672,8 +2502,6 @@ void ui_key(const key_event_t *ev)
         key_menu(ev);
     else if (screen == SCR_MSG)
         key_msg(ev);
-    else if (screen == SCR_APRS)
-        key_aprs(ev);
     else if (screen == SCR_EDIT)
         key_edit(ev);
     else if (screen == SCR_PAGER)
@@ -2750,38 +2578,6 @@ static void messages(uint32_t now)
         draw_status(), draw_hint();
 }
 
-static void aprs_events(uint32_t now)
-{
-    int e = aprs_poll();
-    if (e & APRS_EV_ACK_DUE && !searching) {
-        int scanning = scan_mode() != SCAN_OFF;
-        voice_stop();
-        if (!scanning)
-            watch_pause(1);
-        aprs_send_ack(watch_slot(watch_rx_slot())->low_power);
-        if (scanning)
-            radio_retune();
-        else
-            watch_pause(0);
-    }
-    if (e & APRS_EV_NEW) {
-        const aprs_pkt_t *p = aprs_get(0);
-        debug_puts("APRS ");
-        debug_puts(p->from);
-        debug_puts(": ");
-        debug_puts(p->text);
-        debug_puts("\r\n");
-        apply_backlight(1);
-        last_key = now;
-        snd(SND_OPEN);
-        aprs_read_all();
-        if (aprs_sel >= 0 && ++aprs_sel >= aprs_count())
-            aprs_sel = -1;                      /* keep the picked station picked */
-    }
-    if (e && screen == SCR_APRS)
-        draw_aprs();
-}
-
 static void pager_events(uint32_t now)
 {
     int e = pocsag_poll();
@@ -2852,30 +2648,22 @@ void ui_tick(void)
         load_settings();                /* also the slots' channels, as written */
         watch_update(watch_selected() ^ 1);
         watch_update(watch_selected());
-        if (data_mode == 1)             /* apply() set the modem up for messages */
-            aprs_listen(1);
-        else if (data_mode == 2)
+        if (data_mode)                  /* apply() set the modem up for messages */
             pocsag_listen(1);
         redraw();
     }
 
-    int want = screen == SCR_APRS ? 1 : screen == SCR_PAGER ? 2 : 0;
+    int want = screen == SCR_PAGER;
     if (want != data_mode) {                    /* the modem listens for what is on screen */
-        if (data_mode == 1)
-            aprs_listen(0);
-        else if (data_mode == 2)
+        if (data_mode)
             pocsag_listen(0);
         data_mode = (uint8_t)want;
-        watch_single(want != 0);                /* the modem's frequency is the selected slot's */
-        if (want == 1)
-            aprs_listen(1);
-        else if (want == 2)
+        watch_single(want);                     /* the modem's frequency is the selected slot's */
+        if (want)
             pocsag_listen(1);
     }
     if (!tx_active()) {
-        if (data_mode == 1)
-            aprs_events(now);
-        else if (data_mode == 2)
+        if (data_mode)
             pager_events(now);
         else
             messages(now);
@@ -2891,7 +2679,7 @@ void ui_tick(void)
             draw_hint();
         }
         last_key = now;                 /* keeps the backlight on */
-    } else if (msg_receiving() || aprs_receiving() || pocsag_receiving()) {
+    } else if (msg_receiving() || pocsag_receiving()) {
         /* a packet is arriving: no retuning until it is complete */
     } else if (voice_busy()) {
         /* no retuning while a sound plays: each retune switches the BK4819's audio stage, which the
@@ -2941,15 +2729,12 @@ void ui_tick(void)
         }
     }
     morse_tick();
-    int typing = screen == SCR_MSG || screen == SCR_APRS || screen == SCR_EDIT || screen == SCR_PAGER ||
-                 screen == SCR_MORSE;
+    int typing = screen == SCR_MSG || screen == SCR_EDIT || screen == SCR_PAGER || screen == SCR_MORSE;
     if (typing && ((tap_shown && !tap_pending()) ||          /* the cycling letter is settled */
                    (toast_until && (int32_t)(now - toast_until) >= 0))) {
         toast_until = 0;
         if (screen == SCR_MSG)
             draw_msg_compose();
-        else if (screen == SCR_APRS)
-            draw_aprs_compose();
         else if (screen == SCR_PAGER)
             draw_pager();
         else if (screen == SCR_MORSE)

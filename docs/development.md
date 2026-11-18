@@ -12,7 +12,7 @@
 | `src/radio.c` | receive: tuning, calibrated squelch, audio, monitor, search |
 | `src/watch.c`, `src/scan.c` | dual watch, channel (and unused VFO) scan |
 | `src/tx.c` | transmit: allowed ranges, PA calibration, key-up / key-down |
-| `src/msg.c`, `src/aprs.c`, `src/pocsag.c` | data modes ([data-modes.md](data-modes.md)) |
+| `src/msg.c`, `src/pocsag.c` | data modes ([data-modes.md](data-modes.md)) |
 | `src/ui.c` | every screen, keys, menu, settings record |
 | `src/voice.c` | sound pack player (TMR1 PWM, IMA ADPCM) |
 | `src/splash.c` | boot splash player |
@@ -65,10 +65,6 @@ cycle stamps, `--pins` logs output changes among them. Also:
 Time is simulated (about 48 MHz at two cycles per instruction), so timings are approximate.
 
 Helpers:
-- `tools/aprs_emu.py`:
-  - `cfg` puts an APRS callsign into a flash image;
-  - `rx SRC DEST INFO` makes the raw demodulator capture of a frame;
-  - `tx LOG` decodes the AFSK the firmware sent (from REG_71 writes and cycle stamps).
 - `tools/pocsag_emu.py`: `rx RIC TEXT [numeric]` makes a capture; `tx LOG` decodes a sent page from
   the FIFO writes.
 - `tools/splash.py GIF --image IN OUT` puts a splash into a flash image.
@@ -111,8 +107,6 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 | TX time-out | | ✓ |
 | AM receive | built, not yet checked with an AM signal | |
 | UV-K5 messages | modem registers read back | ✓ send, receive, receipts |
-| APRS send | | ✓ frames decode with valid FCS |
-| APRS receive | | ✓ with ideal captures; the BK4819 demodulator is untested |
 | POCSAG send / receive | | ✓ |
 | Scrambler, fixed (UV-K5 types) | ✓ heard on another radio (types 1, 2): weak | ✓ register values |
 | SSB receive | | ✓ registers, PTT refused; both sidebands unproven |
@@ -130,9 +124,7 @@ They are not in this repository (`.gitignore`): make your own from your radio.
   the UV-K5's method (REG_31 bit 1, REG_71); stock has no voice scrambler.
 - **Still to come from stock:** Remote Scan (unknown), DTMF side tone, tone scanning.
 - **Channels:** not editable on the radio, and program mode has no channel read/write.
-- **On-air checks:** messages with a UV-K5; APRS and POCSAG with an SDR (multimon-ng, Direwolf) or a
-  pager. That includes POCSAG polarity and bit order, AFSK and FSK deviation, and whether APRS
-  receive works at all.
+- **On-air checks:** messages with a UV-K5. POCSAG was checked with a HackRF and multimon-ng (1.28-1.30).
 - **VFO scan:** exists in `src/scan.c` but is not offered: it skipped past signals in testing and
   was set aside in favour of the channel scan.
 - **No restore tool** for writing a full flash backup back.

@@ -35,7 +35,7 @@ flash size register 0x1FFFF7E0 reads 64 KB.
   - The **USART does not match:** it has the older layout (STAT +0x00, DATA +0x04, BAUD +0x08,
     CTL0 +0x0C). `src/debug.c` drives it directly.
   - TMR1 is GD's TIMER0 (IRQ 13, `TIMER0_BRK_UP_TRG_COM_IRQHandler`, APB2EN bit 11).
-- **DWT cycle counter:** works. The APRS transmitter uses it for bit timing.
+- **DWT cycle counter:** works (the APRS transmitter of 1.12-1.32 used it for bit timing).
 
 ### Clocks
 
@@ -208,7 +208,7 @@ is clear the result is (REG_0D & 0x7FF) << 16 | REG_0E (10 Hz). REG_32 = 0x8244 
 - Frequency words are REG_71 (tone 1) and REG_72 (tone 2) = **Hz x 10.3244** (26 MHz crystal
   family).
 - In TX mode 0xC3FA the tone replaces the microphone, and REG_71 can be rewritten on the fly
-  without a phase jump (APRS uses this).
+  without a phase jump (the APRS transmitter of 1.12-1.32 used this).
 - Local beep: REG_30 = 0x0302, REG_47 = 0x6340.
 
 ### FSK modem and interrupts
@@ -263,7 +263,7 @@ anything else:
 | 0x110000 | sound pack (`tools/soundpack.py`, replaces the stock prompts) |
 | 0x120000–0x19CFFF | boot splash, 500 KB (0x19D000–0x1DFFFF free) |
 | 0x8000, 0x9000 | stock's VFO and settings logs, which this firmware reads and writes in stock's format (1.14+) |
-| 0x4000 / 0x5000 / 0x6000 / 0x7000 | settings logs (1.13+): main, APRS, pager, scramble key (32-byte records). In the window, which stock leaves empty, so Talkpod Manager's Read / Write carry them |
+| 0x4000 / 0x5000 / 0x6000 / 0x7000 | settings logs (1.13+): main, APRS (unused from 1.33), pager, scramble key (32-byte records). In the window, which stock leaves empty, so Talkpod Manager's Read / Write carry them |
 | 0x1E0000 / 0x1E1000 / 0x1E2000 / 0x1E3000 | where 1.0–1.12 kept them; 1.13 reads them once, while the window has none, and copies them over |
 
 **Channel record**, 32 bytes, the same as CHIRP's `mml_jc8810` driver:

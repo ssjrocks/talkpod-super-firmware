@@ -105,12 +105,11 @@ void bk4819_init(void)
         bk4819_write((uint8_t)seq2[i][0], seq2[i][1]);
 }
 
-static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert, fsk_tx_invert, pocsag_rx_inv;
+static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, pocsag_rx_inv;
 static uint8_t fsk_tx_off;                      /* bk4819_tx() switched the modem off */
 static uint8_t fsk_roll_rx, fsk_roll_tx;        /* the rolling scrambler's burst instead of messages */
 static uint32_t fsk_sent_at;                    /* millis() when the last send finished */
 static uint16_t pocsag_baud = 1200;
-static uint16_t afsk_r58 = 0x3309;              /* FFSK 1200/2400 RX: the closest to 1200/2200 */
 static void fsk_arm(void);
 static uint8_t gain_mic = 0x1A, gain_ctcss, gain_dcs;
 static uint16_t reg48 = 0xB3FF;                 /* stock's init value, until the calibration is set */
@@ -395,28 +394,20 @@ uint16_t bk4819_irq(void)
  * CRC (REG_5C 0x5625); 16 preamble bytes when sending. */
 static uint16_t fsk_rate(void)
 {
-    static const uint16_t rate[] = {1200, 700, 450, 1200};
+    static const uint16_t rate[] = {1200, 700, 450};
     return fsk_modem == BK_FSK_POCSAG ? pocsag_baud : rate[fsk_modem];
 }
 
-/* BK_FSK_AFSK, for APRS (Bell 202, 1200/2200 Hz) receive: the chip has no Bell 202 demodulator, so
-   it runs its FFSK one and hands over the raw tone decisions; the sync word is four HDLC flags as
-   tones (seven bit times of one tone, one of the other). Which tone is which depends on where the
-   sender's NRZI started, so the caller alternates bk4819_fsk_invert() until a packet syncs. */
 /* BK_FSK_POCSAG: direct FSK (no tones) at pocsag_baud; receive syncs on the POCSAG frame sync
    codeword 7CD215D8. When sending, the sync word is 0xAA bytes too: the chip's 16 preamble bytes,
    these 4 and the caller's own make up POCSAG's 576-bit preamble, and the payload carries the
    codewords, sync codewords included. */
 static void fsk_regs(int tx, int len)
 {
-    static const uint16_t r58[] = {0x3F03, 0x0301, 0x0301, 0};
+    static const uint16_t r58[] = {0x3F03, 0x0301, 0x0301};
     uint16_t sync_a = 0x3072, sync_b = 0x576C, reg58;
-    uint16_t r59 = (uint16_t)((tx ? 15u << 4 : 0) | 1u << 3 |       /* preamble length, 4-byte sync */
-                              (tx && fsk_tx_invert ? 1u << 9 : 0));
-    if (fsk_modem == BK_FSK_AFSK) {
-        reg58 = afsk_r58;
-        sync_a = sync_b = 0xFEFE;
-    } else if (fsk_modem == BK_FSK_POCSAG) {
+    uint16_t r59 = (uint16_t)((tx ? 15u << 4 : 0) | 1u << 3);      /* preamble length, 4-byte sync */
+    if (fsk_modem == BK_FSK_POCSAG) {
         reg58 = (uint16_t)(3u << 8 | 3u << 4 | (pocsag_baud > 1200 ? 4u << 1 : 0) | 1);  /* preamble AA */
         sync_a = tx ? 0xAAAA : pocsag_rx_inv ? 0x832D : 0x7CD2;     /* the sync codeword, or its inverse */
         sync_b = tx ? 0xAAAA : pocsag_rx_inv ? 0xEA27 : 0x15D8;
@@ -447,20 +438,8 @@ static void fsk_regs(int tx, int len)
 
 static void fsk_arm(void)
 {
-    uint16_t r59 = (uint16_t)(1u << 3 | (fsk_invert ? 1u << 10 : 0));
-    bk4819_write(0x59, 0xC000 | r59);
-    bk4819_write(0x59, 0x1000 | r59);           /* FSK receive on */
-}
-
-void bk4819_fsk_invert(int on)
-{
-    fsk_invert = (uint8_t)on;
-    fsk_arm();
-}
-
-void bk4819_fsk_tx_invert(int on)
-{
-    fsk_tx_invert = (uint8_t)on;
+    bk4819_write(0x59, 0xC008);
+    bk4819_write(0x59, 0x1008);                 /* FSK receive on, 4-byte sync */
 }
 
 void bk4819_pocsag_baud(uint16_t baud, int rx_inv)
@@ -468,13 +447,6 @@ void bk4819_pocsag_baud(uint16_t baud, int rx_inv)
     pocsag_baud = baud;
     pocsag_rx_inv = (uint8_t)rx_inv;
     if (fsk_modem == BK_FSK_POCSAG)
-        bk4819_fsk_setup(fsk_modem, fsk_rx_len);
-}
-
-void bk4819_afsk_rx_mode(uint16_t r58)
-{
-    afsk_r58 = r58;
-    if (fsk_modem == BK_FSK_AFSK)
         bk4819_fsk_setup(fsk_modem, fsk_rx_len);
 }
 
@@ -604,7 +576,7 @@ int bk4819_fsk_send(const uint8_t *data, int len, int narrow)
     int i = 0;
     for (; i < len && i < 64; i += 2)           /* 32 words in the FIFO, the rest as it empties */
         bk4819_write(0x5F, (uint16_t)(data[i + 1] << 8 | data[i]));
-    bk4819_write(0x59, (uint16_t)(0x0800 | 15u << 4 | 1u << 3 | (fsk_tx_invert ? 1u << 9 : 0)));
+    bk4819_write(0x59, (uint16_t)(0x0800 | 15u << 4 | 1u << 3));
     uint32_t ms = (uint32_t)(16 + 4 + len) * 8 * 1000 / fsk_rate() + 300;
     for (uint32_t t = 0; t < ms && !sent; t++) {
         delay_ms(1);
@@ -646,7 +618,7 @@ uint32_t bk4819_fsk_sent_ms(void)
 
 int bk4819_fsk_roll_rx(void)
 {
-    return fsk_roll_rx && fsk_modem <= BK_FSK_450;   /* on a message modem; APRS / pager keep theirs */
+    return fsk_roll_rx && fsk_modem <= BK_FSK_450;   /* on a message modem; the pager keeps its own */
 }
 
 uint16_t bk4819_fsk_word(void)

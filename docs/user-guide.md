@@ -30,7 +30,7 @@ in the amber.
 
 | Key | Short press | Long press (0.6 s) |
 |---|---|---|
-| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 7 **APRS** · 8 **Pager** · 9 **Morse** |
+| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 8 **Pager** · 9 **Morse** |
 | MENU | confirm what was typed, otherwise open the menu | switch the selected slot between channel and VFO |
 | FM | FM, AM, SSB (VFO slot) | key lock on / off |
 | A/B | select the other slot | |
@@ -138,7 +138,6 @@ has, Write sends your changes. Side key functions DTMF and Remote aren't there a
 |---|---|
 | Freq scanner | scans a frequency range: see above |
 | Messages | opens the Messages screen (shows how many are new) |
-| APRS | opens the APRS screen |
 | Pager | opens the Pager screen |
 | Morse | opens the Morse screen (shows its speed) |
 | Squelch | 0–9 |
@@ -150,9 +149,6 @@ has, Write sends your changes. Side key functions DTMF and Remote aren't there a
 | TX timeout | off, 30 s, 60 s, 2, 4, 8 min |
 | Msg speed | 1200 (default), 700, 450 bit/s for text messages; both radios must match |
 | Msg receipts | on: answer received messages with a delivery receipt |
-| APRS call | your callsign with SSID, e.g. VK2ABC-7 (an editor opens) |
-| APRS path | none, WIDE1-1, WIDE2-1, WIDE1-1 + WIDE2-1 |
-| APRS beacon | the status text MENU sends on the APRS screen |
 | Pager RIC | the pager address the Pager screen sends to (0–2097151) |
 | Pager speed | 512, 1200, 2400 bit/s |
 | Pager invert | send and receive pages the other way round from standard POCSAG (for a sender or receiver that uses the opposite polarity); off for pagers, multimon-ng, PDW |
@@ -195,7 +191,7 @@ suppressed carrier. One mode is meant to cover upper and lower sideband: see
 
 ## Typing text
 
-The Messages, APRS, Pager and Morse screens and the text editors type like an old phone keypad:
+The Messages, Pager and Morse screens and the text editors type like an old phone keypad:
 
 | Key | Characters (press again within a second for the next) |
 |---|---|
@@ -209,10 +205,10 @@ The Messages, APRS, Pager and Morse screens and the text editors type like an ol
 
 The letter that is still cycling is shown highlighted.
 
-**Sending a text again:** on the Messages, APRS, Pager and Morse screens, hold **FM**. The typing box
+**Sending a text again:** on the Messages, Pager and Morse screens, hold **FM**. The typing box
 shows the last text you sent, highlighted, with its number and the screen it went from ("1/12 Morse").
 Each tap of **FM** goes to an older one. **MENU** puts the one shown in the typing box, to change or
-send; **BACK** goes back to what you were typing, unchanged. All four screens share the list, so a
+send; **BACK** goes back to what you were typing, unchanged. The three screens share the list, so a
 text sent as a message can go out again in Morse. The radio keeps at least the last 25, through
 power-off.
 
@@ -221,7 +217,6 @@ power-off.
 | Screen | Characters | Why |
 |---|---|---|
 | Messages | 29 | the UV-K5 messenger's packet has room for 29 |
-| APRS | 67 | the APRS standard's limit for a message |
 | Pager | 91 | a page goes out as one BK4819 data packet (255 bytes at most): 91 fit whatever the RIC |
 | Morse | 144 | nothing limits it but the TX timeout |
 
@@ -242,25 +237,8 @@ selected slot's frequency.
   status bar and plays a sound. The modem tone itself is muted.
 - Encrypted UV-K5 messages show as "(encrypted)".
 
-The receiver listens for messages on every screen except APRS and Pager, which use the modem for
-their own formats, and on every channel except Rolling ones (they listen for the scrambler's burst).
-
-## APRS (long 7)
-
-Set **APRS call** in the menu first; nothing is sent without it.
-
-- MENU with nothing typed sends a status **beacon** with the menu's beacon text, for example
-  `VK2ABC-7>APZA36,WIDE1-1:>A36SE CFW`.
-- UP picks a heard station (highlighted). Type, then MENU sends it an APRS **message**
-  (`:VK2XYZ-9 :text{12`). When its ack arrives, your message gets a green `+`.
-- Messages addressed to your call are shown in amber and **acked automatically**. Repeats of the
-  same message are acked again but listed once.
-- Positions show as `3351.20S 15112.40E comment`; objects, Mic-E and other packets get a short
-  summary.
-
-Receiving APRS is **experimental**. See [data-modes.md](data-modes.md#aprs): the BK4819 has no
-Bell 202 demodulator, so the firmware borrows its FFSK one. APRS listening runs only while this
-screen is open.
+The receiver listens for messages on every screen except the Pager, which uses the modem for its
+own format, and on every channel except Rolling ones (they listen for the scrambler's burst).
 
 ## Morse (long 9)
 

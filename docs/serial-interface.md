@@ -74,7 +74,7 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 `src/shell.c`.
 - **Commands:** one per line, ended by CR (or LF); arguments separated by spaces; hex where noted.
 - **Replies:** lines ended by CRLF.
-- **Log lines:** the radio also prints them (keys pressed, `message: ...`, `APRS ...`, `page ...`,
+- **Log lines:** the radio also prints them (keys pressed, `message: ...`, `page ...`,
   `TX on`). Pick replies out by their content. Log lines are muted while program mode is active.
 
 | Command | Reply |
@@ -99,9 +99,8 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 | `L` | the receiver event log (below), then `END` |
 | `l` | clears the event log: `ok` |
 | `k KEY` / `K KEY` (1.27+) | presses KEY / holds it as a long press: `MENU` `UP` `DOWN` `BACK` `0`–`9` `A/B` `FM` `TOP` `SIDE1` `SIDE2`, any case. PTT is refused. The display wakes first, so the key always acts. `ok` |
-| `T TEXT` (1.27+) | puts TEXT in the open typing screen (Messages, APRS, Pager, Morse), cut to its limit: `ok N` (characters), or `no typing screen` |
-| `S RATE SYNC LEN BW [MODE]` (1.31+; MODE 1.32+) | research: the direct-FSK receiver as a fast 1-bit sampler of the received audio. RATE bit/s, the 32-bit SYNC (hex) it waits for, LEN bytes per packet (REG_5D), BW REG_58's bandwidth field (0 1.2K, 4 2.4K). Prints `sampling`, `S` at a sync, every FIFO word as 4 hex digits (low byte first) as it arrives, `C` at a packet complete (re-armed), and `END words`. MODE bits (1.32): 1 rewrite REG_5D every 32 words, 2 don't re-arm at a packet complete, 4 a 2-byte sync (SYNC's low 16 bits); the run ends with `END words` after 3 s without a word (15 s before a sync) or on any byte |
-| `h` (1.27+) | the pages and APRS packets on the radio, newest first: `page< FROM TEXT` received, `page> TO TEXT` sent, `aprs<` / `aprs>` the same, then `END` |
+| `T TEXT` (1.27+) | puts TEXT in the open typing screen (Messages, Pager, Morse), cut to its limit: `ok N` (characters), or `no typing screen` |
+| `h` (1.27+) | the pages on the radio, newest first: `page< FROM TEXT` received, `page> TO TEXT` sent, then `END` (APRS packets too, as `aprs<` / `aprs>`, until 1.32) |
 
 ### Event log (1.22+)
 
@@ -214,11 +213,11 @@ screen).
 
 **Settings** stock also has (squelch, backlight, side keys, Roger...) are in stock's own record, above.
 The rest, this firmware's own (`src/settings.c`), are logs of 32-byte records, one 4 KB sector per area, in the
-program-mode window from 1.13 so that Read / Write carry them: 0x4000 main, 0x5000 APRS, 0x6000 pager,
+program-mode window from 1.13 so that Read / Write carry them: 0x4000 main, 0x5000 APRS (unused from 1.33), 0x6000 pager,
 0x7000 scramble key and the frequency scanner's range. (1.0–1.12 kept them at 0x1E0000–0x1E3FFF; 1.13 reads those once, while the
 window has none, and copies them in.) After the PC writes, the radio loads them again.
 Talkpod Manager's `tsf_settings.py` reads and writes them; the payloads are the structs `saved_t`
-(`src/ui.c`), `aprs_cfg_t`, `pager_cfg_t` and `roll_cfg_t`.
+(`src/ui.c`), `pager_cfg_t` and `roll_cfg_t` (and `aprs_cfg_t` until 1.32).
 
 | Bytes | Field |
 |---|---|
@@ -232,7 +231,7 @@ The newest valid record wins, and the sector is erased only when full. A record 
 is shorter; the fields it lacks keep their defaults.
 
 **Sent texts** (`src/sent.c`), the history held FM shows: two 4 KB sectors at 0x19D000, written in
-turn; records of 160 bytes: u16 magic 0x5E47, u8 length, u8 kind (0 message, 1 APRS, 2 pager,
+turn; records of 160 bytes: u16 magic 0x5E47, u8 length, u8 kind (0 message, 1 APRS until 1.32, 2 pager,
 3 Morse), up to 144 characters, zeros, u16 sequence (bytes 156–157), u16 CRC-16/XMODEM of bytes
 0–157. When one sector is full, the other is erased and written next.
 

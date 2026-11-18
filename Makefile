@@ -35,7 +35,6 @@ C_SOURCES = \
   src/voice.c \
   src/tx.c \
   src/msg.c \
-  src/aprs.c \
   src/pocsag.c \
   src/roll.c \
   src/stock.c \

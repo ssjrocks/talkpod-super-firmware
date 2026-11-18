@@ -19,7 +19,7 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - a two-slot user interface with dual watch;
 - a frequency scanner over any range, in FM, AM or Auto (AM on airband and 27 MHz CB);
 - SSB receive on a VFO slot;
-- text messaging compatible with UV-K5 radios, APRS and POCSAG paging;
+- text messaging compatible with UV-K5 radios, and POCSAG paging;
 - Morse code sending, 5–40 words per minute;
 - texts sent before, recalled on any typing screen (hold FM) and kept through power-off;
 - squelch levels from weak stations (level 1) to strong ones only (level 9);
@@ -27,7 +27,7 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.32**. Builds to about 61.6 KB of the MCU's 63 KB application flash.
+Version **1.33**. Builds to about 56.4 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -47,10 +47,10 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 | Document | What is in it |
 |---|---|
-| [docs/user-guide.md](docs/user-guide.md) | Screens, keys, menu, messaging, APRS, pager, splash |
+| [docs/user-guide.md](docs/user-guide.md) | Screens, keys, menu, messaging, pager, splash |
 | [docs/hardware.md](docs/hardware.md) | Everything learned about the radio: MCU, bootloader, pins, BK4819, RF switching, calibration, flash map, display, keys, audio |
 | [docs/stock-firmware.md](docs/stock-firmware.md) | Reverse-engineering notes on the stock V1.22 Super firmware, with addresses |
-| [docs/data-modes.md](docs/data-modes.md) | The BK4819 FSK modem as used here; UV-K5 messenger, APRS and POCSAG formats and implementations |
+| [docs/data-modes.md](docs/data-modes.md) | The BK4819 FSK modem as used here; UV-K5 messenger and POCSAG formats and implementations; why APRS was removed |
 | [docs/serial-interface.md](docs/serial-interface.md) | Programming cable, flashing protocol, `.kdhx` format, the firmware's serial shell and event log, **the splash format and how Talkpod Manager uploads it** |
 | [docs/morse.md](docs/morse.md) | The Morse signal exactly, for writing a decoder |
 | [docs/development.md](docs/development.md) | Source layout, building, the Unicorn emulator and other tools, what is verified on hardware |
@@ -77,17 +77,16 @@ Each release was tested on the radio.
 | FM transmit with the radio's PA calibration, high / low power, time-out timer | working (1.0–1.10 sent a silent carrier; fixed in 1.11) |
 | Channels from Talkpod Manager / CHIRP: read and write over the stock programming protocol (1.1+) | working |
 | Receiver event log, read over the cable (Talkpod Manager's Event log), with signal readings and weak stations the squelch kept out (1.23) | working |
-| Control from a PC over the programming cable, for testing: press and hold keys, type into the open text screen, list the pages and APRS packets (shell `k`, `K`, `T`, `h`; 1.27) | working |
+| Control from a PC over the programming cable, for testing: press and hold keys, type into the open text screen, list the pages (shell `k`, `K`, `T`, `h`; 1.27) | working |
 | Per channel: transmit frequency (repeater shift, split), transmit-off, busy channel lockout | working |
 | CTCSS / DCS sent and decoded (stock's register values), tone squelch in scan and dual watch | working |
 | Voice scrambler: the UV-K5's ten inversion types (2600–3500 Hz) | working; weak: words stay partly understandable |
 | Rolling scrambler: the inversion frequency glides along a keyed path (Super Firmware radios only) | working |
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | working |
-| APRS sending: beacons and messages (AFSK 1200; the beacon decoded by Direwolf on air) | working |
-| APRS receiving (heard stations, messages to you and their acks) | **not working:** in tests with a HackRF the BK4819's demodulator never synced on APRS packets that Direwolf decodes |
+| APRS | **removed in 1.33:** the radio's chip can't decode received APRS, so it was taken out (sending had worked); see [data-modes.md](docs/data-modes.md#aprs-removed-in-133) |
 | POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric, standard polarity at +-4.5 kHz (1.28-1.30; before, decoders read the radio's pages only inverted, and it didn't receive pages) | working |
 | Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters, without Roger or tail | working |
-| Text lengths: Messages 29 (the UV-K5 packet), APRS 67 (the APRS standard), pager 91 (one BK4819 data packet), Morse 144 | working |
+| Text lengths: Messages 29 (the UV-K5 packet), pager 91 (one BK4819 data packet), Morse 144 | working |
 | Sent texts kept through power-off and recalled on any typing screen (hold FM) | working |
 | Animated boot splash, changeable over the serial cable | working |
 | Settings kept across power-off; read and written by Talkpod Manager (1.13+) | working |
@@ -110,7 +109,7 @@ The flasher is `talkpod-firmware` from
    downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.32.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.33.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.
