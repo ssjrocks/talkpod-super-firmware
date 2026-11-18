@@ -27,7 +27,7 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.31**. Builds to about 61.6 KB of the MCU's 63 KB application flash.
+Version **1.32**. Builds to about 61.6 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -110,7 +110,7 @@ The flasher is `talkpod-firmware` from
    downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.31.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.32.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.
