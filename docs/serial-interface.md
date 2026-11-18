@@ -100,6 +100,7 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 | `l` | clears the event log: `ok` |
 | `k KEY` / `K KEY` (1.27+) | presses KEY / holds it as a long press: `MENU` `UP` `DOWN` `BACK` `0`–`9` `A/B` `FM` `TOP` `SIDE1` `SIDE2`, any case. PTT is refused. The display wakes first, so the key always acts. `ok` |
 | `T TEXT` (1.27+) | puts TEXT in the open typing screen (Messages, APRS, Pager, Morse), cut to its limit: `ok N` (characters), or `no typing screen` |
+| `S RATE SYNC LEN BW` (1.31+) | research: the direct-FSK receiver as a fast 1-bit sampler of the received audio. RATE bit/s, the 32-bit SYNC (hex) it waits for, LEN bytes per packet (REG_5D), BW REG_58's bandwidth field (0 1.2K, 4 2.4K). Prints `sampling`, `S` at a sync, every FIFO word as 4 hex digits (low byte first) as it arrives, `C` at a packet complete (re-armed), and `END words` after 3 s without a word (15 s before a sync) or on any byte |
 | `h` (1.27+) | the pages and APRS packets on the radio, newest first: `page< FROM TEXT` received, `page> TO TEXT` sent, `aprs<` / `aprs>` the same, then `END` |
 
 ### Event log (1.22+)
