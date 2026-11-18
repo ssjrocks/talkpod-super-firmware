@@ -3,7 +3,7 @@
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK
  * cancels. Long presses: 1 TX power high/low, 2 squelch, 3 step, 4 search, 5 messages, 6 scan,
- * 8 pager, MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
+ * 7 tunes, 8 pager, MENU channel/VFO, FM key lock; a short FM press switches FM/AM. Up/down tune, A/B switches slot, side key 1 is
  * monitor while held, side key 2 starts/stops the channel scan. During a scan 0 locks the channel
  * out and up/down move on. MENU and FM act on release, so a long press does not also open the menu
  * or switch the modulation.
@@ -28,6 +28,7 @@
 #include "tx.h"
 #include "msg.h"
 #include "morse.h"
+#include "tune.h"
 #include "sent.h"
 #include "pocsag.h"
 #include "roll.h"
@@ -49,7 +50,7 @@
 #define HINT_Y      117
 #define TOAST_MS    1500
 
-enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM, SCR_MORSE };
+enum { SCR_MAIN, SCR_MENU, SCR_ABOUT, SCR_MSG, SCR_EDIT, SCR_PAGER, SCR_FSCAN, SCR_FM, SCR_MORSE, SCR_TUNES };
 
 static const uint32_t steps[] = {250, 500, 625, 1000, 1250, 2500, 10000, 100000, 100, 10, 1};
 static const char *const step_names[] = {"2.5k", "5k", "6.25k", "10k", "12.5k", "25k", "100k", "1M",
@@ -419,11 +420,11 @@ static const stock_item_t stock_items[] = {
 #define STOCK_ITEMS 22
 
 enum { M_FSCAN, M_MESSAGES, M_PAGER, M_MORSE, M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL,
-       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN, M_MORSE_WPM,
+       M_BACKLIGHT, M_TOT, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER_RIC, M_PAGER_SPEED, M_PAGER_INVERT, M_ROLL_KEY, M_KEYBEEP, M_VOICE, M_SCAN, M_MORSE_WPM, M_TUNES,
        M_STOCK, M_ABOUT = M_STOCK + STOCK_ITEMS };
 static const char *const menu_names[M_STOCK] = {
     "Freq scanner", "Messages", "Pager", "Morse", "Squelch", "Step", "Bandwidth", "Modulation", "Dual watch",
-    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels", "Morse speed",
+    "Backlight", "TX timeout", "Msg speed", "Msg receipts", "Pager RIC", "Pager speed", "Pager invert", "Scramble key", "Key beep", "Voice", "Scan channels", "Morse speed", "Tunes",
 };
 
 /* The menu is a list of categories (MENU or digits 1-7 open one), each at most a screen or so of items.
@@ -432,7 +433,7 @@ static const char *const menu_names[M_STOCK] = {
 #define ST(i) (M_STOCK + (i))
 static const uint8_t cat_radio[] = {M_SQUELCH, M_STEP, M_BANDWIDTH, M_MODULATION, M_DUAL, ST(10), M_TOT};
 static const uint8_t cat_tx[] = {ST(11), ST(12), ST(13), ST(14), ST(15), ST(1), ST(2), ST(3)};
-static const uint8_t cat_screen[] = {M_BACKLIGHT, ST(7), ST(8), ST(16), M_KEYBEEP, M_VOICE, ST(17)};
+static const uint8_t cat_screen[] = {M_BACKLIGHT, ST(7), ST(8), ST(16), M_KEYBEEP, M_VOICE, ST(17), M_TUNES};
 static const uint8_t cat_keys[] = {ST(20), ST(18), ST(19), ST(21), ST(9)};
 static const uint8_t cat_scan[] = {M_FSCAN, M_SCAN, ST(6)};
 static const uint8_t cat_data[] = {M_MESSAGES, M_MSG_SPEED, M_MSG_RECEIPTS, M_PAGER, M_PAGER_RIC, M_PAGER_SPEED,
@@ -992,6 +993,8 @@ static char fs_digits[8];
 static void stop_activity(void);
 static void open_morse(void);
 static void open_panel(int c, int back);
+static void open_tunes(void);
+static void draw_tunes(void);
 static void draw_morse(void);
 
 static uint32_t fs_value(int field)
@@ -1258,6 +1261,8 @@ static void redraw(void)
         draw_fm();
     else if (screen == SCR_MORSE)
         draw_morse();
+    else if (screen == SCR_TUNES)
+        draw_tunes();
     else
         draw_about();
 }
@@ -1411,6 +1416,9 @@ static void long_press(int key)
         break;
     case KEY_5:
         open_messages();
+        return;
+    case KEY_7:
+        open_tunes();
         return;
     case KEY_8:
         open_pager();
@@ -2156,6 +2164,8 @@ static void key_menu(const key_event_t *ev)
             open_pager();
         } else if (item == M_MORSE) {
             open_morse();
+        } else if (item == M_TUNES) {
+            open_tunes();
         } else if (item == M_PAGER_RIC || item == M_ROLL_KEY) {
             open_edit(item == M_PAGER_RIC ? E_RIC : E_KEY);
         } else if (item == M_ABOUT) {
@@ -2352,6 +2362,135 @@ static void key_morse(const key_event_t *ev)
         draw_morse_header();
         break;
     }
+    default:
+        break;
+    }
+}
+
+/* ---- Tunes (long 7): short melodies on the speaker (MENU) or on the air (MENU held) ------------- */
+
+static uint8_t tune_sel, tune_top, tune_on;     /* tune_on: 1 the speaker, 2 on the air */
+#define TUNE_ROWS 7
+
+static void draw_tunes(void)
+{
+    lcd_fill(0, 0, LCD_W, 14, C_PANEL);
+    gfx_text(4, 1, &font_7x13b, "Tunes", C_TEXT, C_PANEL);
+    const char *r = tune_on == 2 ? "on air" : tune_on ? "playing" : "";
+    gfx_text(124 - gfx_text_width(&font_5x8, r), 4, &font_5x8, r, tune_on == 2 ? C_RED : C_GREEN, C_PANEL);
+    lcd_fill(0, 14, LCD_W, LCD_H - 14, C_BG);
+    for (int i = tune_top; i < tune_count() && i < tune_top + TUNE_ROWS; i++) {
+        int y = 16 + (i - tune_top) * 13, sel = i == tune_sel;
+        uint16_t bg = sel ? C_PANEL2 : C_BG;
+        char t[8];
+        if (sel)
+            gfx_rrect(2, y - 1, 124, 13, bg);
+        gfx_text(6, y + 1, &font_6x10, tune_name(i), sel && tune_on ? C_AMBER : C_TEXT, bg);
+        put_str(put_dec(t, (tune_ms(i, 0) + 999) / 1000), " s");
+        gfx_text(122 - gfx_text_width(&font_6x10, t), y + 1, &font_6x10, t, C_DIM, bg);
+    }
+    int toast_on = (int32_t)(toast_until - millis()) > 0;
+    gfx_text(1, LCD_H - 9, &font_5x8, toast_on ? toast : tune_on ? "BACK stops it" : "MENU play  hold: on air",
+             toast_on ? C_AMBER : C_DIM, C_BG);
+}
+
+static void open_tunes(void)
+{
+    screen = SCR_TUNES;
+    draw_tunes();
+}
+
+static void tunes_done(void)                    /* it ended, or was stopped: listen again */
+{
+    tune_on = 0;
+    if (tx_timed_out) {
+        tx_timed_out = 0;
+        show_toast("TX time-out");
+    }
+    watch_pause(0);
+}
+
+static void tunes_tick(uint32_t now)
+{
+    if (tune_on && !tune_active()) {
+        tunes_done();
+        if (screen == SCR_TUNES)
+            draw_tunes();
+    }
+    if (screen == SCR_TUNES && toast_until && (int32_t)(now - toast_until) >= 0) {
+        toast_until = 0;
+        draw_tunes();
+    }
+}
+
+static void play_tune(int air)
+{
+    slot_t *s = watch_slot(watch_selected());
+    if (air) {
+        uint32_t need = (tune_ms(tune_sel, 1) + 999) / 1000, limit = tot_s[stock.tot < 6 ? stock.tot : 0];
+        if (!s->tx || s->am == MOD_SSB) {
+            show_toast(s->tx ? "SSB is receive only" : "TX off on this channel");
+            draw_tunes();
+            return;
+        }
+        if (limit && need > limit) {            /* the time-out would cut it off */
+            show_toast("longer than TX timeout");
+            draw_tunes();
+            return;
+        }
+    }
+    stop_activity();
+    voice_stop();
+    watch_pause(1);
+    int r = tune_start(tune_sel, air ? s->tx : 0, s->narrow, s->low_power, s->tx_tone.type, s->tx_tone.value);
+    if (r > 0) {
+        tune_on = (uint8_t)(air ? 2 : 1);
+    } else {
+        watch_pause(0);
+        show_toast("TX not allowed here");
+    }
+    draw_tunes();
+}
+
+static void key_tunes(const key_event_t *ev)
+{
+    if (ev->key == KEY_MENU) {                  /* a tap plays on the speaker, a hold on the air */
+        if (ev->type == KEV_PRESS) {
+            key_long[KEY_MENU] = 0;
+        } else if (ev->type == KEV_LONG) {
+            key_long[KEY_MENU] = 1;
+            if (!tune_on)
+                play_tune(1);
+        } else if (ev->type == KEV_RELEASE && !key_long[KEY_MENU] && !tune_on) {
+            play_tune(0);
+        }
+        return;
+    }
+    if (ev->type != KEV_PRESS && !(ev->type == KEV_REPEAT && (ev->key == KEY_UP || ev->key == KEY_DOWN)))
+        return;
+    switch (ev->key) {
+    case KEY_UP:
+    case KEY_DOWN:
+        if (tune_on)
+            break;
+        tune_sel = (uint8_t)((tune_sel + tune_count() + (ev->key == KEY_DOWN ? 1 : -1)) % tune_count());
+        if (tune_sel < tune_top)
+            tune_top = tune_sel;
+        if (tune_sel >= tune_top + TUNE_ROWS)
+            tune_top = (uint8_t)(tune_sel - TUNE_ROWS + 1);
+        draw_tunes();
+        break;
+    case KEY_BACK:
+        snd(SND_CANCEL);
+        if (tune_on) {
+            tune_stop();
+            tunes_done();
+            draw_tunes();
+        } else {
+            screen = SCR_MAIN;
+            draw_main();
+        }
+        break;
     default:
         break;
     }
@@ -2568,6 +2707,10 @@ void ui_key(const key_event_t *ev)
             morse_stop();
             morse_done();
         }
+        if (tune_on) {                      /* and a tune */
+            tune_stop();
+            tunes_done();
+        }
         if (screen == SCR_FM)
             close_fm();
         if (screen != SCR_MAIN) {
@@ -2612,6 +2755,8 @@ void ui_key(const key_event_t *ev)
         key_fm(ev);
     else if (screen == SCR_MORSE)
         key_morse(ev);
+    else if (screen == SCR_TUNES)
+        key_tunes(ev);
     else if (ev->type == KEV_PRESS && (ev->key == KEY_BACK || ev->key == KEY_MENU)) {
         screen = SCR_MENU;
         draw_menu();
@@ -2829,6 +2974,7 @@ void ui_tick(void)
         }
     }
     morse_tick();
+    tunes_tick(now);
     int typing = screen == SCR_MSG || screen == SCR_EDIT || screen == SCR_PAGER || screen == SCR_MORSE;
     if (typing && ((tap_shown && !tap_pending()) ||          /* the cycling letter is settled */
                    (toast_until && (int32_t)(now - toast_until) >= 0))) {

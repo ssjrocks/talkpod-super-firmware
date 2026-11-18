@@ -41,6 +41,7 @@ C_SOURCES = \
   src/splash.c \
   src/evlog.c \
   src/morse.c \
+  src/tune.c \
   src/sent.c \
   drivers/adc.c \
   gfx/font_5x8.c \

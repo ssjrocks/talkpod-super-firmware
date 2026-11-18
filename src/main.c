@@ -10,6 +10,7 @@
 #include "radio.h"
 #include "evlog.h"
 #include "morse.h"
+#include "tune.h"
 #include "roll.h"
 #include "stock.h"
 #include "shell.h"
@@ -55,6 +56,7 @@ int main(void)
         fwdgt_feed();
         voice_poll();
         morse_poll();
+        tune_poll();
         roll_poll();
         if ((int32_t)(millis() - next) >= 0) {
             next += KEY_SCAN_MS;

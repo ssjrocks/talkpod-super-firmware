@@ -1,0 +1,227 @@
+/* Tunes: short melodies for fun (a few notes to about 10 s) on the BK4819's tone generator, through the
+ * speaker, or on the transmitter as an audio tone on the FM carrier, as Morse is sent (src/morse.c): the
+ * channel's CTCSS / DCS go with it, Roger and Tail cut don't, and the carrier comes up LEAD_MS first for
+ * receivers' squelch and repeaters.
+ *
+ * A tune is notes of two bytes: the MIDI note number (60 middle C, 0 a rest; bit 7 G: glide to the next
+ * note's pitch over this one, without a gap), then the length in 10 ms. A note that doesn't glide ends
+ * with GAP_MS of silence, so repeated notes are heard as two. The tunes are public domain, or made up
+ * here (Ta-da!, Level up, Sad trombone, Boing). */
+#include "tune.h"
+#include "bk4819.h"
+#include "board.h"
+#include "system.h"
+#include "tx.h"
+
+#define LEAD_MS 400
+#define TAIL_MS 150
+#define GAP_MS  20
+#define G       0x80
+
+static const uint8_t t_tada[] = {72, 8, 76, 8, 79, 8, 0, 4, 84, 60};
+static const uint8_t t_levelup[] = {72, 6, 76, 6, 79, 6, 84, 6, 88, 6, 91, 6, 96, 30};
+static const uint8_t t_charge[] = {67, 15, 72, 15, 76, 15, 79, 30, 76, 15, 79, 60};
+static const uint8_t t_shave[] = {72, 40, 67, 20, 67, 20, 69, 40, 67, 40, 0, 40, 71, 40, 72, 40};
+static const uint8_t t_trombone[] = {
+    70 | G, 40, 69, 10, 69 | G, 40, 68, 10, 68 | G, 40, 67, 10,
+    67 | G, 8, 66 | G, 8, 67 | G, 8, 66 | G, 8, 67 | G, 8, 66 | G, 8, 67 | G, 8, 66 | G, 8, 67 | G, 8, 66, 30,
+};
+static const uint8_t t_boing[] = {60 | G, 12, 84 | G, 25, 60, 5};
+static const uint8_t t_ode[] = {
+    76, 35, 76, 35, 77, 35, 79, 35, 79, 35, 77, 35, 76, 35, 74, 35,
+    72, 35, 72, 35, 74, 35, 76, 35, 76, 52, 74, 18, 74, 70,
+};
+static const uint8_t t_elise[] = {
+    76, 15, 75, 15, 76, 15, 75, 15, 76, 15, 71, 15, 74, 15, 72, 15, 69, 30, 0, 15,
+    60, 15, 64, 15, 69, 15, 71, 30, 0, 15, 64, 15, 68, 15, 71, 15, 72, 30, 0, 15,
+    64, 15, 76, 15, 75, 15, 76, 15, 75, 15, 76, 15, 71, 15, 74, 15, 72, 15, 69, 45,
+};
+static const uint8_t t_birthday[] = {
+    67, 30, 67, 10, 69, 40, 67, 40, 72, 40, 71, 80,
+    67, 30, 67, 10, 69, 40, 67, 40, 74, 40, 72, 80,
+    67, 30, 67, 10, 79, 40, 76, 40, 72, 40, 71, 40, 69, 80,
+    77, 30, 77, 10, 76, 40, 72, 40, 74, 40, 72, 80,
+};
+static const uint8_t t_twinkle[] = {
+    72, 30, 72, 30, 79, 30, 79, 30, 81, 30, 81, 30, 79, 60,
+    77, 30, 77, 30, 76, 30, 76, 30, 74, 30, 74, 30, 72, 60,
+};
+
+typedef struct {
+    const char *name;
+    const uint8_t *notes;
+    uint8_t n;                          /* notes, two bytes each */
+} tune_t;
+#define T(name, a) {name, a, sizeof a / 2}
+static const tune_t tunes[] = {
+    T("Ta-da!", t_tada), T("Level up", t_levelup), T("Charge!", t_charge), T("Shave & haircut", t_shave),
+    T("Sad trombone", t_trombone), T("Boing", t_boing), T("Ode to joy", t_ode), T("Fur Elise", t_elise),
+    T("Happy birthday", t_birthday), T("Twinkle twinkle", t_twinkle),
+};
+#define TUNES ((int)(sizeof tunes / sizeof tunes[0]))
+
+/* MIDI 108-119 (C8 to B8) in Hz x 4; a lower octave is a shift of these */
+static const uint16_t top4[12] = {16744, 17740, 18795, 19912, 21096, 22351, 23680, 25088, 26580, 28160, 29834, 31609};
+
+static uint16_t note_hz(int n)
+{
+    int shift = 11 - n / 12;            /* x 4, and an octave down per 12 below MIDI 108 */
+    return (uint16_t)((top4[n % 12] + (1u << (shift - 1))) >> shift);
+}
+
+enum { IDLE, LEAD, SOUND, SILENT, TAIL };
+
+static const tune_t *cur;
+static uint8_t state, idx, on_air, glide;
+static uint16_t hz_now, glide_from, glide_to, rest_ms;
+static uint32_t next_at, glide_at, glide_len;
+
+int tune_count(void)
+{
+    return TUNES;
+}
+
+const char *tune_name(int i)
+{
+    return i >= 0 && i < TUNES ? tunes[i].name : "";
+}
+
+uint32_t tune_ms(int i, int air)
+{
+    uint32_t ms = air ? LEAD_MS + TAIL_MS : 0;
+    for (int k = 0; i >= 0 && i < TUNES && k < tunes[i].n; k++)
+        ms += tunes[i].notes[2 * k + 1] * 10u;
+    return ms;
+}
+
+int tune_active(void)
+{
+    return state != IDLE;
+}
+
+static void set_hz(uint16_t hz)
+{
+    if (hz != hz_now) {
+        bk4819_tone_hz(hz);
+        hz_now = hz;
+    }
+}
+
+static void end_local(void)
+{
+    bk4819_beep(0, 0);
+    board_speaker(SPK_TUNE, 0);
+    state = IDLE;
+}
+
+static void next_note(void)
+{
+    if (idx >= cur->n) {                        /* the end: the carrier a little longer on the air */
+        bk4819_tone_key(0);
+        if (on_air) {
+            state = TAIL;
+            next_at += TAIL_MS;
+        } else {
+            end_local();
+        }
+        return;
+    }
+    int p = cur->notes[2 * idx], n = p & 0x7F;
+    uint32_t ms = cur->notes[2 * idx + 1] * 10u;
+    idx++;
+    glide = 0;
+    if (!n) {
+        bk4819_tone_key(0);
+        state = SILENT;
+        next_at += ms;
+        return;
+    }
+    set_hz(note_hz(n));
+    bk4819_tone_key(1);
+    state = SOUND;
+    if ((p & G) && idx < cur->n && (cur->notes[2 * idx] & 0x7F)) {
+        glide = 1;
+        glide_from = hz_now;
+        glide_to = note_hz(cur->notes[2 * idx] & 0x7F);
+        glide_at = next_at;
+        glide_len = ms;
+        next_at += ms;
+    } else {
+        uint32_t gap = ms > 2 * GAP_MS ? GAP_MS : ms / 2;
+        rest_ms = (uint16_t)gap;
+        next_at += ms - gap;
+    }
+}
+
+int tune_start(int i, uint32_t freq, int narrow, int low_power, int tone, uint16_t tone_value)
+{
+    if (i < 0 || i >= TUNES)
+        return 0;
+    cur = &tunes[i];
+    idx = 0;
+    hz_now = 0;
+    on_air = freq != 0;
+    if (on_air) {
+        if (!tx_start(freq, narrow, low_power, tone, tone_value, 0))
+            return -1;
+        bk4819_tone_tx(1);
+        bk4819_tone_key(0);
+        next_at = millis() + LEAD_MS;
+    } else {
+        board_speaker(SPK_TUNE, 1);
+        bk4819_beep(1, 440);                    /* the tone generator to the speaker */
+        bk4819_write(0x48, 0xB3FF);             /* as loud as the shell's test tone */
+        bk4819_tone_key(0);
+        next_at = millis() + 100;               /* the screen is drawn meanwhile */
+    }
+    state = LEAD;
+    return 1;
+}
+
+void tune_stop(void)
+{
+    if (state == IDLE)
+        return;
+    if (on_air) {
+        state = IDLE;
+        bk4819_tone_tx(0);
+        tx_stop();
+    } else {
+        end_local();
+    }
+}
+
+void tune_poll(void)
+{
+    if (state == IDLE)
+        return;
+    if (on_air && !tx_active()) {               /* the time-out, or PTT, ended the transmission */
+        state = IDLE;
+        return;
+    }
+    uint32_t now = millis();
+    if (glide && state == SOUND && now - glide_at < glide_len)
+        set_hz((uint16_t)(glide_from + ((int32_t)glide_to - glide_from) * (int32_t)(now - glide_at) / (int32_t)glide_len));
+    if ((int32_t)(now - next_at) < 0)
+        return;
+    switch (state) {
+    case SOUND:
+        if (glide) {                            /* a glide goes straight on to the next note */
+            next_note();
+            break;
+        }
+        bk4819_tone_key(0);
+        state = SILENT;
+        next_at += rest_ms;
+        break;
+    case LEAD:
+    case SILENT:
+        next_note();
+        break;
+    case TAIL:
+        state = IDLE;
+        bk4819_tone_tx(0);
+        tx_stop();                              /* no Roger, no squelch tail: those are for voice */
+        break;
+    }
+}

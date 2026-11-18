@@ -13,6 +13,7 @@
 | `src/watch.c`, `src/scan.c` | dual watch, channel (and unused VFO) scan |
 | `src/tx.c` | transmit: allowed ranges, PA calibration, key-up / key-down |
 | `src/msg.c`, `src/pocsag.c` | data modes ([data-modes.md](data-modes.md)) |
+| `src/morse.c`, `src/tune.c` | Morse code and tunes: tones keyed on the transmitter (tunes also on the speaker) |
 | `src/ui.c` | every screen, keys, menu, settings record |
 | `src/voice.c` | sound pack player (TMR1 PWM, IMA ADPCM) |
 | `src/splash.c` | boot splash player |

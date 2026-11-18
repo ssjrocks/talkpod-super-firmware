@@ -30,7 +30,7 @@ in the amber.
 
 | Key | Short press | Long press (0.6 s) |
 |---|---|---|
-| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 8 **Pager** · 9 **Morse** |
+| 0–9 | type a frequency or channel number | 1 TX power high/low · 2 squelch level · 3 tuning step · 4 search · 5 **Messages** · 6 channel scan · 7 **Tunes** · 8 **Pager** · 9 **Morse** |
 | MENU | confirm what was typed, otherwise open the menu | switch the selected slot between channel and VFO |
 | FM | FM, AM, SSB (VFO slot) | key lock on / off |
 | A/B | select the other slot | |
@@ -173,6 +173,7 @@ in Data modes); BACK returns to the screen.
 | Key beep | on / off |
 | Voice | on / off (power-on sound, then the mode spoken after it; channel/frequency mode, high/low) |
 | Menu exit | leaves the menu after this long without a key |
+| Tunes | opens the Tunes screen (long 7 on the main screen too) |
 
 **4 Keys**
 
@@ -298,6 +299,20 @@ goes with it, so repeaters let it through.
   transmits your voice.
 - **Roger** and **Tail cut** are for voice: Morse ends without them. A message that would run past
   the **TX timeout** isn't sent; the radio says how many seconds it needs.
+
+## Tunes (long 7)
+
+Short tunes for fun, from a "ta-da" to about 10 seconds: Ta-da!, Level up, Charge!, Shave & haircut, Sad
+trombone, Boing, Ode to joy, Fur Elise, Happy birthday and Twinkle twinkle (public domain, or made up for
+this firmware). Each shows how long it is.
+
+- UP / DOWN pick one. **MENU** plays it on the speaker (unplug the programming cable: it cuts the speaker).
+- **Hold MENU** to send it on the selected slot: the tone goes out on the FM carrier the way Morse does,
+  with the channel's CTCSS / DCS, the carrier coming up 0.4 s first, and no Roger or tail. A tune longer
+  than the TX timeout isn't sent.
+- **BACK** (or PTT) stops it.
+
+Music isn't allowed on the amateur bands in most countries; send tunes only where your licence allows.
 
 ## Pager (long 8)
 

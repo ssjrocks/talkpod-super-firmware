@@ -37,6 +37,7 @@ shot settings2 --flash "$flash" --ms 1600 --keys 600:MENU:60,1000:2:60
 shot ssb --flash "$flash" --ms 3000 --keys 800:MENU:800,2000:FM:80,2500:FM:80
 shot messages --flash "$flash" --ms 3800 --keys 500:5:800 --fsk-rx "2000:$(msg 'on my way, 10 min')"
 shot panel --flash "$flash" --ms 4000 --keys 1500:8:900,2700:A/B:900
+shot tunes --flash "$flash" --ms 3200 --keys 1500:7:900,2700:DOWN:40
 shot pager --flash "$flash" --ms 4000 --keys 1500:8:900 \
     --fsk-rx "2500:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'TEST PAGE FROM THE BENCH')" \
     --fsk-rx "3000:$(.venv/bin/python tools/pocsag_emu.py rx 1234567 'RADIO CHECK OK')"
@@ -58,7 +59,7 @@ SCREENS = [("main", "dual watch"), ("rx", "receiving"), ("tx", "transmitting"), 
            ("fs-setup", "frequency scanner: range"), ("fs-run", "frequency scanner: stopped on a signal, AM"),
            ("settings", "1 Radio"), ("settings2", "2 Transmit: Roger, tail cut..."),
            ("ssb", "SSB receive on a VFO"), ("messages", "text messages"),
-           ("panel", "hold A/B on the Pager: its settings"), ("pager", "POCSAG pager"), ("morse", "Morse code going out"), ("history", "hold FM: a text sent before"),
+           ("panel", "hold A/B on the Pager: its settings"), ("tunes", "tunes: MENU plays, hold MENU sends"), ("pager", "POCSAG pager"), ("morse", "Morse code going out"), ("history", "hold FM: a text sent before"),
            ("splash", "boot splash"), ("about", "about")]
 SIZE, GAP, LABEL = 384, 24, 34
 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 15)
