@@ -32,7 +32,7 @@
 #define RX_LEN     254                 /* even: the FIFO is read in words */
 #define TX_PRE     50                  /* preamble bytes ahead of the codewords (+ 16 + 4 from the chip) */
 #define BATCHES    3
-#define RX_TIMEOUT 5000                /* 254 bytes take 4 s at 512 bit/s */
+#define RX_SLACK   300                 /* ms after the capture should be complete */
 #define HISTORY    8
 
 pager_cfg_t pager_cfg = {1234567, 1, 0};
@@ -307,9 +307,12 @@ int pocsag_poll(void)
         buf[rx_n++] = (uint8_t)w;
         buf[rx_n++] = (uint8_t)(w >> 8);
     }
-    if (f & 0x2000) {
+    /* The chip reports the packet complete only when the carrier goes (seen on air), so a capture
+       is also decoded once the buffer is full or its time is up */
+    uint32_t ms = RX_LEN * 8000U / pager_bauds[pager_cfg.speed] + RX_SLACK;
+    if ((f & 0x2000) || (receiving && (rx_n + 2 > RX_LEN || now - rx_started > ms))) {
         if (receiving) {
-            while (rx_n + 2 <= RX_LEN) {
+            while ((f & 0x2000) && rx_n + 2 <= RX_LEN) {
                 uint16_t w = bk4819_fsk_word();
                 buf[rx_n++] = (uint8_t)w;
                 buf[rx_n++] = (uint8_t)(w >> 8);
@@ -317,9 +320,6 @@ int pocsag_poll(void)
             ev |= decode() | PAGE_EV_RX;
         }
         rx_end();
-    } else if (receiving && now - rx_started > RX_TIMEOUT) {
-        rx_end();
-        ev |= PAGE_EV_RX;
     }
     return ev;
 }

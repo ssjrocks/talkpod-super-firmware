@@ -192,6 +192,9 @@ board does not have.
   832D EA27) and inverts the capture before decoding; "Pager invert" swaps both. Until 1.27 the
   receiver alternated polarity every 100 ms and re-armed each time, which lost sync codewords.
 - Dual watch keeps to the selected slot while the screen is open (1.28).
+- The chip reports the packet complete only when the carrier goes (seen on air with 1.28), so a
+  capture is decoded when its 254 bytes are in, or 0.3 s after they should be (1.29). 1.28 and
+  earlier dropped a capture undecoded after 5 s, which at 512 bit/s was every one.
 
 **Verified:** in the emulator, sent FIFO contents decode to the right RIC and text
 (`tools/pocsag_emu.py tx`). Received captures decode numeric, alphanumeric, multi-batch and

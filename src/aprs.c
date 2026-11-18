@@ -531,9 +531,9 @@ int aprs_poll(void)
         rx_buf[rx_n++] = (uint8_t)w;
         rx_buf[rx_n++] = (uint8_t)(w >> 8);
     }
-    if (f & 0x2000) {
-        if (receiving) {
-            while (rx_n + 2 <= RX_LEN) {
+    if ((f & 0x2000) || (receiving && (rx_n + 2 > RX_LEN || now - rx_started > RX_TIMEOUT))) {
+        if (receiving) {                        /* decoded too when the buffer is full or time is up */
+            while ((f & 0x2000) && rx_n + 2 <= RX_LEN) {
                 uint16_t w = bk4819_fsk_word();
                 rx_buf[rx_n++] = (uint8_t)w;
                 rx_buf[rx_n++] = (uint8_t)(w >> 8);
@@ -548,9 +548,6 @@ int aprs_poll(void)
             ev |= APRS_EV_RX;
         }
         rx_end();
-    } else if (receiving && now - rx_started > RX_TIMEOUT) {
-        rx_end();
-        ev |= APRS_EV_RX;
     } else if (!receiving && (int32_t)(now - next_flip) >= 0) {
         next_flip = now + FLIP_MS;
         invert ^= 1;

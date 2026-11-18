@@ -12,7 +12,9 @@ squelch, a frequency-counter result). The power switch (PF7) reads on until --sw
 --flash serves an image of the external SPI flash (W25Q16 READ / JEDEC ID); erased otherwise.
 --signal-at puts a steady signal on a frequency (10 Hz units): while the BK4819 is tuned there its
 squelch bit (REG_0C bit 1) is set and its noise (REG_65) reads 10. --fsk-rx MS:HEX delivers an
-FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO), and an FSK send
+FSK packet (sync, five FIFO words, packet complete; the rest is left in the FIFO); --fsk-rx-open
+MS:HEX delivers the sync, then an almost-full flag per word and no completion, as the chip does on air
+when the carrier stays (the POCSAG capture of 1.28). An FSK send
 (REG_59 bit 11) reports its FIFO almost empty every 50 ms and finishes when REG_5D bytes would
 have taken at REG_72's bit rate. --pins PC15,PA13 logs those outputs among the
 BK4819 accesses (with --bk); --hwver sets the bootloader's board tag (default 02). --serial-in
@@ -104,6 +106,8 @@ def main():
                     help="MS:FLAGS a BK4819 interrupt: REG_0C bit 0, then REG_02 reads FLAGS once (0x0400 tail)")
     ap.add_argument("--fsk-rx", action="append", default=[],
                     help="MS:HEX an FSK packet arrives (sync, a few FIFO words, then complete)")
+    ap.add_argument("--fsk-rx-open", action="append", default=[],
+                    help="MS:HEX as the chip does on air: sync, then each word on its own, no complete")
     ap.add_argument("--serial-in", action="append", default=[], help="MS:HEX bytes to receive")
     ap.add_argument("--serial-out", help="save what the firmware sends, raw")
     ap.add_argument("--voice", action="store_true", help="list the sounds played, with their PWM swing")
@@ -154,6 +158,12 @@ def main():
         data += b"\0" * (len(data) & 1)
         words = [data[i] | data[i + 1] << 8 for i in range(0, len(data), 2)]
         fsk.append([int(when), [0x0002] + [0x1000] * 5 + [0x2000], words])
+    for item in args.fsk_rx_open:
+        when, hx = item.split(":")
+        data = bytes.fromhex(hx)
+        data += b"\0" * (len(data) & 1)
+        words = [data[i] | data[i + 1] << 8 for i in range(0, len(data), 2)]
+        fsk.append([int(when), [0x0002] + [0x1000] * len(words), words])
     fsk.sort()
     irqs = sorted((int(i.split(":")[0]), int(i.split(":")[1], 0)) for i in args.bkirq)
     ports = {"A": GPIOA, "B": GPIOB, "C": GPIOC, "F": GPIOF}
