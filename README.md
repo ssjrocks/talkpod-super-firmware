@@ -27,7 +27,7 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - a wide transmit range;
 - an animated boot splash.
 
-Version **1.29**. Builds to about 61.6 KB of the MCU's 63 KB application flash.
+Version **1.30**. Builds to about 61.6 KB of the MCU's 63 KB application flash.
 
 [![A tour of the firmware on a real radio](docs/media/tour.gif)](https://github.com/ssjrocks/talkpod-super-firmware/raw/main/docs/media/tour.mp4)
 
@@ -85,7 +85,7 @@ Each release was tested on the radio.
 | UV-K5-compatible text messages (kamilsss655 format) with delivery receipts | working |
 | APRS sending: beacons and messages (AFSK 1200; the beacon decoded by Direwolf on air) | working |
 | APRS receiving (heard stations, messages to you and their acks) | **not working:** in tests with a HackRF the BK4819's demodulator never synced on APRS packets that Direwolf decodes |
-| POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric, standard polarity at +-4.5 kHz (1.28-1.29; before, decoders read the radio's pages only inverted, and it didn't receive pages) | working |
+| POCSAG pager, 512 / 1200 / 2400 bit/s, numeric and alphanumeric, standard polarity at +-4.5 kHz (1.28-1.30; before, decoders read the radio's pages only inverted, and it didn't receive pages) | working |
 | Morse code sent as a 700 Hz tone (MCW), 5–40 WPM, 30 to start, up to 144 characters, without Roger or tail | working |
 | Text lengths: Messages 29 (the UV-K5 packet), APRS 67 (the APRS standard), pager 91 (one BK4819 data packet), Morse 144 | working |
 | Sent texts kept through power-off and recalled on any typing screen (hold FM) | working |
@@ -110,7 +110,7 @@ The flasher is `talkpod-firmware` from
    downloads the newest release). Or from the command line, the release's `.kdhx` (or
    `build/a36se-fw.kdhx`):
    ```bash
-   talkpod-firmware flash talkpod-super-firmware-v1.29.kdhx
+   talkpod-firmware flash talkpod-super-firmware-v1.30.kdhx
    ```
    This works from stock firmware or from this firmware, with no buttons to press. If the radio
    doesn't answer, switch it on while holding both side keys (white screen) and add `--manual`.

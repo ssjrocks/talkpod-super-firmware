@@ -48,6 +48,7 @@ void     bk4819_fsk_rearm(void);                /* clear the FIFO and listen aga
 void     bk4819_fsk_invert(int on);             /* receive with the bits inverted (BK_FSK_AFSK) */
 void     bk4819_afsk_rx_mode(uint16_t r58);
 void     bk4819_fsk_tx_invert(int on);          /* send the bits inverted */
+#define BK_FSK_BURST 4                          /* POCSAG: FIFO words per almost-full flag */
 void     bk4819_pocsag_baud(uint16_t baud, int rx_inv);  /* BK_FSK_POCSAG: 512, 1200 or 2400; rx_inv: listen
                                                   for the inverted sync codeword */     /* REG_58 for BK_FSK_AFSK, to try demodulator modes */
 void     bk4819_tone_tx(int on);                /* while transmitting: tone 1 instead of the mic */

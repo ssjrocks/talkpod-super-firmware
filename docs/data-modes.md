@@ -195,6 +195,9 @@ board does not have.
 - The chip reports the packet complete only when the carrier goes (seen on air with 1.28), so a
   capture is decoded when its 254 bytes are in, or 0.3 s after they should be (1.29). 1.28 and
   earlier dropped a capture undecoded after 5 s, which at 512 bit/s was every one.
+- The FIFO is read 4 words per almost-full flag (REG_5E threshold 4, as UV-K5 AirCopy does), 1.30.
+  A word at a time, a capture fell behind and once read a word twice, which shifted the rest; the
+  decoder also steps over one such repeated word.
 
 **Verified:** in the emulator, sent FIFO contents decode to the right RIC and text
 (`tools/pocsag_emu.py tx`). Received captures decode numeric, alphanumeric, multi-batch and

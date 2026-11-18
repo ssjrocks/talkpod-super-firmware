@@ -244,16 +244,25 @@ static int finish(void)
     return PAGE_EV_NEW;
 }
 
+static uint32_t codeword(int i)
+{
+    return ((uint32_t)buf[i] << 24 | (uint32_t)buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3]) ^ (flip() * 0x01010101U);
+}
+
 static int decode(void)
 {
     int ev = 0;
-    uint32_t x = flip() * 0x01010101U;
-    for (int i = 0; i + 4 <= rx_n; i += 4) {
-        uint32_t cw = ((uint32_t)buf[i] << 24 | (uint32_t)buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3]) ^ x;
-        int pos = (i / 4) % 17;                             /* 16: the next batch's sync codeword */
+    for (int i = 0, k = 0; i + 4 <= rx_n; i += 4, k++) {
+        uint32_t cw = codeword(i);
+        int pos = k % 17;                                   /* 16: the next batch's sync codeword */
         if (!correct(&cw)) {
-            ev |= finish();
-            break;                                          /* noise: the transmission is over */
+            uint32_t next = i + 6 <= rx_n ? codeword(i + 2) : 0;    /* a FIFO word read twice: step over it */
+            if (i + 6 > rx_n || !correct(&next)) {
+                ev |= finish();
+                break;                                      /* noise: the transmission is over */
+            }
+            i += 2;
+            cw = next;
         }
         if (pos == 16) {
             if (cw != SYNC)
@@ -302,11 +311,12 @@ int pocsag_poll(void)
         rx_started = now;
         ev |= PAGE_EV_RX;
     }
-    if ((f & 0x1000) && receiving && rx_n + 2 <= RX_LEN) {
-        uint16_t w = bk4819_fsk_word();
-        buf[rx_n++] = (uint8_t)w;
-        buf[rx_n++] = (uint8_t)(w >> 8);
-    }
+    if ((f & 0x1000) && receiving)
+        for (int k = 0; k < BK_FSK_BURST && rx_n + 2 <= RX_LEN; k++) {
+            uint16_t w = bk4819_fsk_word();
+            buf[rx_n++] = (uint8_t)w;
+            buf[rx_n++] = (uint8_t)(w >> 8);
+        }
     /* The chip reports the packet complete only when the carrier goes (seen on air), so a capture
        is also decoded once the buffer is full or its time is up */
     uint32_t ms = RX_LEN * 8000U / pager_bauds[pager_cfg.speed] + RX_SLACK;

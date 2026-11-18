@@ -435,7 +435,10 @@ static void fsk_regs(int tx, int len)
     bk4819_write(0x5A, sync_a);
     bk4819_write(0x5B, sync_b);
     bk4819_write(0x5C, 0x5625);
-    bk4819_write(0x5E, tx ? 16u << 3 : 64u << 3 | 1);   /* almost empty at 16 / almost full at 1 word */
+    /* almost empty at 16 words / almost full at 1 word, or BK_FSK_BURST for POCSAG, which then reads that
+       many per flag (as UV-K5 AirCopy does): read a word at a time, a long capture fell behind and
+       sometimes read a word twice (seen on air, 1.29) */
+    bk4819_write(0x5E, tx ? 16u << 3 : 64u << 3 | (fsk_modem == BK_FSK_POCSAG ? BK_FSK_BURST : 1));
     bk4819_write(0x5D, (uint16_t)(len << 8));
     bk4819_write(0x59, r59 | 0xC000);           /* clear both FIFOs */
     bk4819_write(0x59, r59);
