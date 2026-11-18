@@ -155,7 +155,7 @@ has, Write sends your changes. Side key functions DTMF and Remote aren't there a
 | APRS beacon | the status text MENU sends on the APRS screen |
 | Pager RIC | the pager address the Pager screen sends to (0–2097151) |
 | Pager speed | 512, 1200, 2400 bit/s |
-| Pager invert | send the pager FSK inverted (in case a receiver expects the other polarity) |
+| Pager invert | send and receive pages the other way round from standard POCSAG (for a sender or receiver that uses the opposite polarity); off for pagers, multimon-ng, PDW |
 | Scramble key | the key Rolling channels use (up to 14 characters, the same on every radio) |
 | Key beep | on / off |
 | Voice | on / off (power-on sound, then the mode spoken after it; channel/frequency mode, high/low) |

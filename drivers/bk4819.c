@@ -105,7 +105,7 @@ void bk4819_init(void)
         bk4819_write((uint8_t)seq2[i][0], seq2[i][1]);
 }
 
-static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert, fsk_tx_invert;
+static uint8_t fsk_modem = BK_FSK_OFF, fsk_rx_len, fsk_invert, fsk_tx_invert, pocsag_rx_inv;
 static uint8_t fsk_tx_off;                      /* bk4819_tx() switched the modem off */
 static uint8_t fsk_roll_rx, fsk_roll_tx;        /* the rolling scrambler's burst instead of messages */
 static uint32_t fsk_sent_at;                    /* millis() when the last send finished */
@@ -418,8 +418,8 @@ static void fsk_regs(int tx, int len)
         sync_a = sync_b = 0xFEFE;
     } else if (fsk_modem == BK_FSK_POCSAG) {
         reg58 = (uint16_t)(3u << 8 | 3u << 4 | (pocsag_baud > 1200 ? 4u << 1 : 0) | 1);  /* preamble AA */
-        sync_a = tx ? 0xAAAA : 0x7CD2;
-        sync_b = tx ? 0xAAAA : 0x15D8;
+        sync_a = tx ? 0xAAAA : pocsag_rx_inv ? 0x832D : 0x7CD2;     /* the sync codeword, or its inverse */
+        sync_b = tx ? 0xAAAA : pocsag_rx_inv ? 0xEA27 : 0x15D8;
     } else {
         reg58 = r58[fsk_modem];
         if (tx ? fsk_roll_tx : bk4819_fsk_roll_rx()) {   /* the rolling burst: own sync word, 8 bytes */
@@ -460,9 +460,10 @@ void bk4819_fsk_tx_invert(int on)
     fsk_tx_invert = (uint8_t)on;
 }
 
-void bk4819_pocsag_baud(uint16_t baud)
+void bk4819_pocsag_baud(uint16_t baud, int rx_inv)
 {
     pocsag_baud = baud;
+    pocsag_rx_inv = (uint8_t)rx_inv;
     if (fsk_modem == BK_FSK_POCSAG)
         bk4819_fsk_setup(fsk_modem, fsk_rx_len);
 }
@@ -592,7 +593,8 @@ int bk4819_fsk_send(const uint8_t *data, int len, int narrow)
     if (fsk_modem == BK_FSK_OFF)
         return 0;
     bk4819_write(0x30, (uint16_t)(bk4819_read(0x30) & ~(1u << 2)));   /* microphone off */
-    bk4819_write(0x40, (uint16_t)((r40 & 0xF000) | (narrow ? 1200 : 1300)));    /* deviation */
+    /* deviation: UV-K5 messages as UV-K5 firmware sends them; POCSAG +-4.5 kHz (1300 measured +-5.8 kHz) */
+    bk4819_write(0x40, (uint16_t)((r40 & 0xF000) | (fsk_modem == BK_FSK_POCSAG ? 1005 : narrow ? 1200 : 1300)));
     bk4819_write(0x2B, 0x0005);                 /* no TX 300 Hz high-pass, no pre-emphasis */
     fsk_regs(1, len);
     delay_ms(100);

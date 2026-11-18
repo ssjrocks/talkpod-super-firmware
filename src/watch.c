@@ -14,7 +14,7 @@
 #define TONE_WAIT_MS  500           /* a carrier without the slot's tone: move on after this */
 
 static slot_t slots[2];
-static uint8_t selected, dual = 1, rx, holding, paused;
+static uint8_t selected, dual = 1, rx, holding, paused, single;
 static uint32_t tuned_at, closed_since, held_at;
 
 static void resolve(slot_t *s)
@@ -127,11 +127,17 @@ void watch_pause(int on)
     }
 }
 
+void watch_single(int on)
+{
+    single = (uint8_t)on;
+    holding = 0;
+}
+
 int watch_poll(void)
 {
     if (paused)
         return WATCH_EV_NONE;
-    if (!dual) {
+    if (!dual || single) {
         if (rx != selected)
             tune(selected);
         return radio_poll() ? (radio_open() ? WATCH_EV_OPEN : WATCH_EV_CLOSE) : WATCH_EV_NONE;

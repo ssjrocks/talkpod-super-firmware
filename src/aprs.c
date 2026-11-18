@@ -16,6 +16,7 @@
 #include <string.h>
 #include "aprs.h"
 #include "bk4819.h"
+#include "evlog.h"
 #include "msg.h"
 #include "radio.h"
 #include "settings.h"
@@ -517,6 +518,8 @@ int aprs_poll(void)
     if (!listening)
         return 0;
     uint16_t f = bk4819_irq();
+    if (f & ~0x1000)
+        evlog(EV_IRQ, 0, f);
     if (f & 0x0002) {
         receiving = 1;
         rx_n = 0;

@@ -33,6 +33,7 @@ int     watch_dual(void);
 void    watch_update(int i);    /* after changing a slot: resolve it and retune */
 int     watch_rx_slot(void);    /* the slot the receiver is on now */
 void    watch_pause(int on);    /* scan and search take the receiver meanwhile */
+void    watch_single(int on);   /* the selected slot only, as with dual watch off (APRS, Pager screens) */
 int     watch_poll(void);       /* every 10 ms; a WATCH_EV_* for the slot watch_rx_slot() */
 
 #endif

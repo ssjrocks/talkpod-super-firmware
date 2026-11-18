@@ -2866,6 +2866,7 @@ void ui_tick(void)
         else if (data_mode == 2)
             pocsag_listen(0);
         data_mode = (uint8_t)want;
+        watch_single(want != 0);                /* the modem's frequency is the selected slot's */
         if (want == 1)
             aprs_listen(1);
         else if (want == 2)

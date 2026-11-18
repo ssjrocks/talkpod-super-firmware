@@ -3,9 +3,11 @@
 
   pocsag_emu.py rx RIC TEXT [numeric]
       print the hex for emu.py --fsk-rx: the codewords after the first sync codeword (which the
-      BK4819 matches itself), MSB first, in one batch or more
+      BK4819 matches itself), MSB first, in one batch or more, bit-inverted as the chip captures
+      standard POCSAG (1.28)
   pocsag_emu.py tx LOG
-      decode what the firmware sent from an emu.py --bk log (the REG_5F FIFO writes of a send)
+      decode what the firmware sent from an emu.py --bk log (the REG_5F FIFO writes of a send);
+      the bytes are inverted back first, as the chip's FSK sends them inverted (1.28)
 """
 import sys
 
@@ -69,14 +71,14 @@ def decode(cws, first_batch_synced=True):
 def main():
     if sys.argv[1] == "rx":
         cws = codewords(int(sys.argv[2]), sys.argv[3], len(sys.argv) > 4)
-        print(b"".join(cw.to_bytes(4, "big") for cw in cws).hex())
+        print(bytes(b ^ 0xFF for b in b"".join(cw.to_bytes(4, "big") for cw in cws)).hex())
     else:
         data = b""
         for line in open(sys.argv[2]):
             p = line.split()
             if len(p) >= 7 and p[2] == "BK" and p[3] == "W" and p[4] == "0x5F":
                 w = int(p[6], 16)
-                data += bytes([w & 255, w >> 8])
+                data += bytes([w & 255 ^ 0xFF, w >> 8 ^ 0xFF])
         pre = len(data) - len(data.lstrip(b"\xaa"))
         print(f"{len(data)} bytes, {pre} preamble bytes (+ 16 + 4 from the chip)")
         body = data[pre:]

@@ -9,13 +9,19 @@
  *
  * Receive: the chip syncs on the first sync codeword and captures 255 bytes (63 codewords, so up
  * to almost four batches); decoding, single-bit error correction and the later sync codewords are
- * handled here. Which way round the FSK is depends on the sender, so the receiver alternates its
- * polarity every 100 ms until a batch syncs. Send: numeric (function 0) when the text is all
- * digits, else alphanumeric (function 3); at most 3 batches.
+ * handled here. Send: numeric (function 0) when the text is all digits, else alphanumeric (function
+ * 3); at most 3 batches.
+ *
+ * Polarity: the chip's direct FSK is the other way round from POCSAG as pagers and decoders use it
+ * (measured on air, 1.27: multimon-ng decoded the radio's pages only inverted, and the radio captured
+ * a HackRF's page bit-inverted). So by default it sends the codewords inverted and listens for the
+ * inverted sync codeword, inverting what it captures; "Pager invert" swaps both. The receiver stays
+ * armed: re-arming it, as alternating polarity did, loses a sync codeword that arrives meanwhile.
  */
 #include <string.h>
 #include "pocsag.h"
 #include "bk4819.h"
+#include "evlog.h"
 #include "msg.h"
 #include "settings.h"
 #include "system.h"
@@ -27,7 +33,6 @@
 #define TX_PRE     50                  /* preamble bytes ahead of the codewords (+ 16 + 4 from the chip) */
 #define BATCHES    3
 #define RX_TIMEOUT 5000                /* 254 bytes take 4 s at 512 bit/s */
-#define FLIP_MS    100
 #define HISTORY    8
 
 pager_cfg_t pager_cfg = {1234567, 1, 0};
@@ -35,10 +40,10 @@ const uint16_t pager_bauds[3] = {512, 1200, 2400};
 static const char numeric_chars[] = "0123456789*U -)(";
 
 static page_t hist[HISTORY];
-static uint8_t count, head, listening, receiving, invert;
+static uint8_t count, head, listening, receiving;
 static uint8_t buf[256];
 static uint16_t rx_n;
-static uint32_t rx_started, next_flip;
+static uint32_t rx_started;
 
 int pocsag_count(void)
 {
@@ -83,9 +88,14 @@ void pocsag_save(void)
     settings_save(SET_PAGER, &pager_cfg, sizeof pager_cfg);
 }
 
+static uint8_t flip(void)             /* XOR for the codeword bytes sent and received */
+{
+    return pager_cfg.invert ? 0 : 0xFF;
+}
+
 void pocsag_apply(void)
 {
-    bk4819_pocsag_baud(pager_bauds[pager_cfg.speed]);
+    bk4819_pocsag_baud(pager_bauds[pager_cfg.speed], !pager_cfg.invert);
 }
 
 /* ---- codewords ----------------------------------------------------------------------------- */
@@ -144,32 +154,29 @@ int pocsag_send(uint32_t ric, const char *text, uint32_t freq, int narrow, int l
     cws[n++] = encode((ric >> 3) << 2 | (numeric ? 0 : 3));
     uint32_t chunk = 0;
     int bits = 0, per = numeric ? 4 : 7;
-    for (int i = 0; i < len || bits; i++) {
-        int c = i < len ? (numeric ? numeric_code(text[i]) : text[i] & 0x7F)
-                        : numeric ? 0xC : 0;               /* pad: spaces / NUL */
-        for (int b = 0; b < per; b++) {
-            chunk = chunk << 1 | ((uint32_t)c >> b & 1);
-            if (++bits == 20) {
-                if (n < BATCHES * 16)
-                    cws[n++] = encode(1U << 20 | chunk);
-                chunk = 0;
-                bits = 0;
-            }
+    for (int i = 0; i < len * per || bits; i++) {     /* the last codeword padded: spaces / NUL bits */
+        int bit = i < len * per ? (numeric ? numeric_code(text[i / per]) : text[i / per] & 0x7F) >> (i % per) & 1
+                                : numeric ? 0xC >> (bits & 3) & 1 : 0;
+        chunk = chunk << 1 | (uint32_t)bit;
+        if (++bits == 20) {
+            if (n < BATCHES * 16)
+                cws[n++] = encode(1U << 20 | chunk);
+            chunk = 0;
+            bits = 0;
         }
-        if (i >= len && !bits)
-            break;
     }
     if (n < BATCHES * 16)
         cws[n++] = IDLE;                                    /* ends the message */
     int batches = (n + 15) / 16, total = TX_PRE + batches * 68;
-    memset(buf, 0xAA, TX_PRE);
+    uint8_t x = flip();
+    memset(buf, 0xAA ^ x, TX_PRE);
     for (int b = 0, k = TX_PRE; b < batches; b++) {
         for (int i = -1; i < 16; i++, k += 4) {
             uint32_t cw = i < 0 ? SYNC : b * 16 + i < n ? cws[b * 16 + i] : IDLE;
-            buf[k] = (uint8_t)(cw >> 24);
-            buf[k + 1] = (uint8_t)(cw >> 16);
-            buf[k + 2] = (uint8_t)(cw >> 8);
-            buf[k + 3] = (uint8_t)cw;
+            buf[k] = (uint8_t)(cw >> 24) ^ x;
+            buf[k + 1] = (uint8_t)(cw >> 16) ^ x;
+            buf[k + 2] = (uint8_t)(cw >> 8) ^ x;
+            buf[k + 3] = (uint8_t)cw ^ x;
         }
     }
     if (!tx_allowed(freq))
@@ -177,9 +184,7 @@ int pocsag_send(uint32_t ric, const char *text, uint32_t freq, int narrow, int l
     if (!tx_start(freq, narrow, low_power, BK_TONE_NONE, 0, 0))
         return 0;
     delay_ms(50);
-    bk4819_fsk_tx_invert(pager_cfg.invert);
     int sent = bk4819_fsk_send(buf, total, narrow);
-    bk4819_fsk_tx_invert(0);
     tx_stop();
     if (sent) {
         page_t *p = add(ric, (uint8_t)(PAGE_OUT | (numeric ? PAGE_NUMERIC : 0)));
@@ -195,12 +200,9 @@ void pocsag_listen(int on)
     listening = (uint8_t)on;
     receiving = 0;
     if (on) {
-        bk4819_pocsag_baud(pager_bauds[pager_cfg.speed]);
+        pocsag_apply();
         bk4819_fsk_setup(BK_FSK_POCSAG, RX_LEN);
-        next_flip = millis() + FLIP_MS;
     } else {
-        invert = 0;
-        bk4819_fsk_invert(0);
         msg_set_modem(msg_modem());
     }
 }
@@ -245,8 +247,9 @@ static int finish(void)
 static int decode(void)
 {
     int ev = 0;
+    uint32_t x = flip() * 0x01010101U;
     for (int i = 0; i + 4 <= rx_n; i += 4) {
-        uint32_t cw = (uint32_t)buf[i] << 24 | (uint32_t)buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3];
+        uint32_t cw = ((uint32_t)buf[i] << 24 | (uint32_t)buf[i + 1] << 16 | buf[i + 2] << 8 | buf[i + 3]) ^ x;
         int pos = (i / 4) % 17;                             /* 16: the next batch's sync codeword */
         if (!correct(&cw)) {
             ev |= finish();
@@ -291,6 +294,8 @@ int pocsag_poll(void)
     if (!listening)
         return 0;
     uint16_t f = bk4819_irq();
+    if (f & ~0x1000)
+        evlog(EV_IRQ, 0, f);
     if (f & 0x0002) {
         receiving = 1;
         rx_n = 0;
@@ -315,10 +320,6 @@ int pocsag_poll(void)
     } else if (receiving && now - rx_started > RX_TIMEOUT) {
         rx_end();
         ev |= PAGE_EV_RX;
-    } else if (!receiving && (int32_t)(now - next_flip) >= 0) {
-        next_flip = now + FLIP_MS;
-        invert ^= 1;
-        bk4819_fsk_invert(invert);
     }
     return ev;
 }

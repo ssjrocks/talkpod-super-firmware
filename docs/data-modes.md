@@ -173,14 +173,25 @@ board does not have.
 - Then the batches, each with its sync codeword. The message ends with an idle codeword.
 - At most 3 batches fit in the modem's 255-byte packet, which allows about 40 alphanumeric
   characters even for RICs in frame 7; typing is limited to 29.
-- "Pager invert" sets REG_59 bit 9 for receivers that expect the other polarity.
+- **Polarity** (1.28): the chip's direct FSK is the other way round from standard POCSAG, so the
+  payload (preamble bytes and codewords) is inverted before it goes into the FIFO. Measured on air
+  with 1.27: multimon-ng decoded the radio's pages only with `-i`. "Pager invert" sends them
+  uninverted.
+- **Deviation** (1.28): REG_40 1005, for +-4.5 kHz. 1.27 used the messages' 1300, measured at
+  +-5.8 kHz on a wide channel.
+- The text's last codeword is padded (spaces or NUL bits); 1.27 and earlier added up to two more
+  codewords of NULs.
 
 **Receiving:**
 - The chip syncs on 7CD215D8 itself and captures 254 bytes (63 codewords, almost four batches).
   Later sync codewords are expected every 17th codeword.
 - Each codeword is checked and single-bit errors corrected (by trying every bit).
 - Decoding stops at an uncorrectable codeword (the transmission is over).
-- Polarity alternates every 100 ms while idle.
+- **Polarity** (1.28): the chip captures standard POCSAG inverted (measured on air: a HackRF's
+  page arrived with every bit inverted), so it listens for the inverted sync codeword (REG_5A/5B
+  832D EA27) and inverts the capture before decoding; "Pager invert" swaps both. Until 1.27 the
+  receiver alternated polarity every 100 ms and re-armed each time, which lost sync codewords.
+- Dual watch keeps to the selected slot while the screen is open (1.28).
 
 **Verified:** in the emulator, sent FIFO contents decode to the right RIC and text
 (`tools/pocsag_emu.py tx`). Received captures decode numeric, alphanumeric, multi-batch and
