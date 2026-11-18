@@ -31,6 +31,8 @@ void keypad_scan(void);                 /* call every KEY_SCAN_MS */
 int  keypad_get(key_event_t *ev);       /* 1 and fills *ev if an event is waiting */
 int  ptt_pressed(void);
 const char *key_name(uint8_t key);
+int  key_by_name(const char *s);        /* any case; KEY_NONE if no key has that name */
+void keypad_inject(uint8_t key, int hold);  /* the shell's presses: press (and long), then release */
 
 #define KEY_SCAN_MS     10
 #define KEY_LONG_MS     600

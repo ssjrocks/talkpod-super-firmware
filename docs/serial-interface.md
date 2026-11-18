@@ -98,6 +98,9 @@ once, when a write moves to another sector, on `E`, or after 1 s of silence.
 | `V` | sound player state |
 | `L` | the receiver event log (below), then `END` |
 | `l` | clears the event log: `ok` |
+| `k KEY` / `K KEY` (1.27+) | presses KEY / holds it as a long press: `MENU` `UP` `DOWN` `BACK` `0`–`9` `A/B` `FM` `TOP` `SIDE1` `SIDE2`, any case. PTT is refused. The display wakes first, so the key always acts. `ok` |
+| `T TEXT` (1.27+) | puts TEXT in the open typing screen (Messages, APRS, Pager, Morse), cut to its limit: `ok N` (characters), or `no typing screen` |
+| `h` (1.27+) | the pages and APRS packets on the radio, newest first: `page< FROM TEXT` received, `page> TO TEXT` sent, `aprs<` / `aprs>` the same, then `END` |
 
 ### Event log (1.22+)
 

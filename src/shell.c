@@ -22,6 +22,12 @@
  *                 "fw=TSF ver=1.26 board=HWVER02 splash=00120000+0007D000 splash_fmt=A36G,A36H"
  *   G             play the boot splash now (a preview after uploading one), then "ok" or
  *                 "no splash"; the screen returns to what it showed
+ *   k KEY / K KEY press a key / hold it (a long press): MENU UP DOWN BACK 0-9 A/B FM TOP SIDE1
+ *                 SIDE2, any case; not PTT. The display wakes first, so the key always acts
+ *   T TEXT        the open typing screen's text (Messages, APRS, Pager, Morse), cut to its limit:
+ *                 "ok N", or "no typing screen"
+ *   h             the pages and APRS packets on the radio, newest first: "page< FROM TEXT" for a
+ *                 received one, "page> TO TEXT" for a sent one, "aprs<" / "aprs>" alike, then "END"
  * See docs/serial-interface.md.
  * Bytes arrive inside progmode_poll(), which also runs within delays, so they are only buffered
  * there and a finished line is run from the main loop by shell_poll().
@@ -39,8 +45,11 @@
 #include "splash.h"
 #include "version.h"
 #include "evlog.h"
+#include "keypad.h"
+#include "pocsag.h"
+#include "aprs.h"
 
-static char line[32];
+static char line[160];                  /* T carries a whole text */
 static volatile uint8_t line_len, line_ready;
 
 /* 'W' receives raw bytes after its command line */
@@ -214,6 +223,29 @@ static void bin_poll(void)
         debug_puts("timeout\r\n");
         bin_len = 0;
     }
+}
+
+static void entry(const char *kind, int out, const char *from, const char *text)
+{
+    debug_puts(kind);
+    debug_puts(out ? "> " : "< ");
+    debug_puts(from);
+    debug_putc(' ');
+    debug_puts(text);
+    debug_puts("\r\n");
+}
+
+static void list(void)
+{
+    for (int i = 0; i < pocsag_count(); i++) {
+        const page_t *pg = pocsag_get(i);
+        entry("page", pg->flags & PAGE_OUT, pg->from, pg->text);
+    }
+    for (int i = 0; i < aprs_count(); i++) {
+        const aprs_pkt_t *a = aprs_get(i);
+        entry("aprs", a->flags & APRS_OUT, a->from, a->text);
+    }
+    debug_puts("END\r\n");
 }
 
 void shell_poll(void)
@@ -397,9 +429,37 @@ void shell_poll(void)
         evlog_clear();
         debug_puts("ok\r\n");
         break;
+    case 'k':
+    case 'K': {
+        while (*p == ' ')
+            p++;
+        int key = key_by_name(p);
+        if (key == KEY_NONE || key == KEY_PTT) {
+            debug_puts("keys: MENU UP DOWN BACK 0-9 A/B FM TOP SIDE1 SIDE2\r\n");
+            break;
+        }
+        ui_wake();
+        keypad_inject((uint8_t)key, line[0] == 'K');
+        debug_puts("ok\r\n");
+        break;
+    }
+    case 'T': {
+        int n = ui_type(*p == ' ' ? p + 1 : p);
+        if (n < 0) {
+            debug_puts("no typing screen\r\n");
+            break;
+        }
+        debug_puts("ok ");
+        put_dec(n);
+        debug_puts("\r\n");
+        break;
+    }
+    case 'h':
+        list();
+        break;
     default:
         debug_puts("r RR | w RR VVVV | x/X ADDR LEN | E ADDR | W ADDR LEN | P ID | d | f HZ | s L | "
-                   "t HZ | b | m HZ N | v LO HI ST N | i | G | L | l\r\n");
+                   "t HZ | b | m HZ N | v LO HI ST N | i | G | L | l | k/K KEY | T TEXT | h\r\n");
     }
     line_len = 0;
     line_ready = 0;

@@ -2602,6 +2602,28 @@ void ui_refresh(void)
     redraw();
 }
 
+void ui_wake(void)                      /* so the shell's next key acts instead of only waking it */
+{
+    apply_backlight(1);
+    last_key = millis();
+}
+
+int ui_type(const char *text)
+{
+    if (screen != SCR_MSG && screen != SCR_APRS && screen != SCR_PAGER && screen != SCR_MORSE)
+        return -1;
+    int n = (int)strlen(text);
+    if (n > comp_max)
+        n = comp_max;
+    memcpy(comp, text, (size_t)n);
+    comp[n] = 0;
+    comp_len = (uint8_t)n;
+    tap_key = 0xFF;
+    hist_pos = -1;
+    redraw();
+    return n;
+}
+
 void ui_key(const key_event_t *ev)
 {
     if (ev->type == KEV_PRESS) {

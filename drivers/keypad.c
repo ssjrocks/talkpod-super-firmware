@@ -37,6 +37,14 @@ static void push(uint8_t key, uint8_t type)
     q_head = next;
 }
 
+void keypad_inject(uint8_t key, int hold)
+{
+    push(key, KEV_PRESS);
+    if (hold)
+        push(key, KEV_LONG);
+    push(key, KEV_RELEASE);
+}
+
 int keypad_get(key_event_t *ev)
 {
     if (q_tail == q_head)
@@ -154,4 +162,17 @@ const char *key_name(uint8_t key)
         "7", "8", "9", "FM", "TOP", "SIDE1", "SIDE2", "PTT",
     };
     return key < KEY_COUNT ? names[key] : "?";
+}
+
+int key_by_name(const char *s)
+{
+    for (uint8_t k = 1; k < KEY_COUNT; k++) {
+        const char *n = key_name(k);
+        int i = 0;
+        while (n[i] && (s[i] == n[i] || (s[i] >= 'a' && s[i] <= 'z' && s[i] - 32 == n[i])))
+            i++;
+        if (!n[i] && !s[i])
+            return k;
+    }
+    return KEY_NONE;
 }
