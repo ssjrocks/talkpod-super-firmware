@@ -21,9 +21,12 @@ radio research. It keeps the radio's everyday functions, with the stock menu set
 - SSB receive on a VFO slot;
 - text messaging compatible with UV-K5 radios, and POCSAG paging;
 - Morse code sending, 5–40 words per minute;
+- short tunes, one with a bass line, on the speaker or sent on the air;
+- a menu in seven categories, with each data screen's own settings a hold of A/B away;
 - texts sent before, recalled on any typing screen (hold FM) and kept through power-off;
 - squelch levels from weak stations (level 1) to strong ones only (level 9);
 - a receiver event log, read and explained by [Talkpod Manager](https://github.com/ssjrocks/talkpod-manager);
+- control from a PC over the programming cable (keys, typing), for testing;
 - a wide transmit range;
 - an animated boot splash.
 
@@ -36,7 +39,7 @@ and a channel scan. The splash is any animation you send it; this one is the own
 
 ![Screens from the firmware](docs/ui/screens.png)
 
-*Version 1.26 running in the emulator (`tools/screens.sh`).*
+*Version 1.36 running in the emulator (`tools/screens.sh`).*
 
 > **Transmit range in detail.** The firmware transmits wherever the BK4819 can synthesise, except
 > the two ranges hard-blocked in code (`src/tx.c`). It was developed with the radio in a shielded
@@ -103,9 +106,10 @@ The firmware does **not** have yet:
 
 ## Quick start
 
-You need the programming cable (K-plug USB serial) and Linux with Python 3, pyserial and Pillow.
-The flasher is `talkpod-firmware` from
-[Talkpod Manager](https://github.com/ssjrocks/talkpod-manager).
+You need the programming cable (K-plug USB serial) and
+[Talkpod Manager](https://github.com/ssjrocks/talkpod-manager) (Linux or Windows), which flashes the
+firmware; its command-line flasher is `talkpod-firmware`. The backup, sound-pack and splash tools in
+this repository need Linux with Python 3, pyserial and Pillow.
 
 1. **Flash** it. In Talkpod Manager: main menu → **Flash firmware…** → Talkpod Super Firmware (it
    downloads the newest release). Or from the command line, the release's `.kdhx` (or

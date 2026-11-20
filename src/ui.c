@@ -1,4 +1,4 @@
-/* User interface: dual-watch main screen (docs/ui/mockups.png, "B dual watch"), menu, messages,
+/* User interface: dual-watch main screen (first drawn by tools/mockup.py), menu, messages,
  * about.
  *
  * Keys on the main screen: digits type a frequency (VFO) or channel number, MENU confirms, BACK

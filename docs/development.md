@@ -30,8 +30,8 @@ make            # build/a36se-fw.elf / .bin / .kdhx; fails if the image passes 6
 make flash      # talkpod-firmware flash --yes build/a36se-fw.kdhx
 ```
 
-`arm-none-eabi-gcc` with newlib nano, `-Os`, sections garbage-collected. Space used at 1.0: about
-43 KB of 63 KB flash; 6.7 KB of RAM static, plus a 1.5 KB stack reserve. The largest C library
+`arm-none-eabi-gcc` with newlib nano, `-Os`, sections garbage-collected. Space used: about 60.1 KB of
+63 KB flash at 1.36 (43 KB at 1.0); 6.7 KB of RAM static, plus a 1.5 KB stack reserve. The largest C library
 functions are avoided (newlib's `strcmp` alone is 730 bytes).
 
 ## Emulator
@@ -57,6 +57,7 @@ cycle stamps, `--pins` logs output changes among them. Also:
 - `--signal-at FREQ_10HZ`
 - `--bkreg-at MS:REG=VAL`
 - `--fsk-rx MS:HEX`
+- `--fsk-rx-open MS:HEX` (the sync, then a FIFO flag per word and no "packet complete", as the chip does on air)
 - `--flash-out FILE`
 - `--voice` (lists the sounds played with their PWM swing, by running the timer interrupt)
 - `--stack` (the deepest stack use seen; slows the run down)
@@ -91,7 +92,7 @@ Helpers:
 | `tools/re/call_stock.py` | calls one function of a decrypted stock image in Unicorn and logs its BK4819 / GPIO activity ([stock-firmware.md](stock-firmware.md)) |
 | `tools/re/stockdis.py` | disassembly helper for the stock image; `--all > build/stock.dis` disassembles all of it |
 | `tools/screens.sh` | renders the README's picture, `docs/ui/screens.png`, from the build in the emulator |
-| `tools/mockup.py`, `tools/mkfont.py`, `tools/mkaafont.py` | UI mockups, bitmap and anti-aliased font tables |
+| `tools/mockup.py`, `tools/mkfont.py`, `tools/mkaafont.py` | the first UI design sketches, bitmap and anti-aliased font tables |
 | `tools/encrypt.c` | `.kdhx` scrambling |
 
 The stock firmware image, flash backups and extracted prompts are vendor data and per-radio data.
@@ -99,30 +100,33 @@ They are not in this repository (`.gitignore`): make your own from your radio.
 
 ## What has been checked where
 
-| Feature | On the radio | Emulator only |
-|---|---|---|
-| Display, keys, backlight, power switch | ✓ | |
-| FM receive and audio, squelch, monitor | ✓ (test signal in a shielded enclosure) | |
-| Search, channel scan, dual watch | ✓ | |
-| Settings across power-off | ✓ | |
-| Sounds | ✓ | |
-| FM transmit, power levels, blocked ranges | ✓ voice heard on another radio (1.11); the ranges in the emulator | |
-| TX time-out | | ✓ |
-| AM receive | built, not yet checked with an AM signal | |
-| UV-K5 messages | modem registers read back | ✓ send, receive, receipts |
-| POCSAG send / receive | | ✓ |
-| Scrambler, fixed (UV-K5 types) | ✓ heard on another radio (types 1, 2): weak | ✓ register values |
-| SSB receive | | ✓ registers, PTT refused; both sidebands unproven |
-| Rolling scrambler | ✓ heard on another radio (without the key) | ✓ burst, glide sent and received against `tools/roll.py`, other key refused |
-| Settings in the window (1.13): copied from older firmware's place, written by Talkpod Manager | ✓ read, written and applied without a restart | ✓ records from `tsf_settings.py` applied |
-| Boot splash upload, `i` / `G` | ✓ | ✓ playback |
+Every release is tested on the radio by its owner. The second column says what was also measured with
+instruments or checked in the emulator.
+
+| Feature | Measured / emulator |
+|---|---|
+| Display, keys, backlight, power switch | |
+| FM receive and audio, squelch, monitor | test signal in a shielded enclosure |
+| AM receive, SSB receive | registers; SSB refuses PTT |
+| Search, channel scan, dual watch | |
+| Settings across power-off; settings in the window (1.13) | records from `tsf_settings.py` applied in the emulator |
+| Sounds | `emu.py --voice` |
+| FM transmit, power levels, blocked ranges | voice heard on another radio (1.11); the ranges in the emulator |
+| TX time-out | emulator |
+| UV-K5 messages | send, receive, receipts in the emulator |
+| POCSAG pager | with a HackRF: the radio's pages decoded by multimon-ng, a HackRF's pages received (1.28–1.30) |
+| Morse | every element and gap to the millisecond in the emulator |
+| Tunes | every note of both voices, and the on-air lead and tail, in the emulator (1.36) |
+| Scrambler, fixed (UV-K5 types) | heard on another radio (types 1, 2): weak |
+| Rolling scrambler | heard on another radio (without the key); burst and glide against `tools/roll.py` |
+| Menu categories, A/B panels | emulator (1.34) |
+| Shell control (`k`, `K`, `T`, `h`) | drove the radio for the pager tests (1.27) |
+| Boot splash upload, `i` / `G` | playback in the emulator |
 
 ## Known issues and ideas
 
 - **480 MHz spur:** the 48 MHz MCU clock's 10th harmonic. Switching to 108 MHz as stock does would
   move it, and give more headroom.
-- **On-air checks of the 1.1 channel features:** CTCSS / DCS tones are set exactly as stock does,
-  emulator-tested, but not yet heard by another radio.
 - **Scrambler:** works on air (1.11), but plain inversion leaves words partly understandable. It is
   the UV-K5's method (REG_31 bit 1, REG_71); stock has no voice scrambler.
 - **Still to come from stock:** Remote Scan (unknown), DTMF side tone, tone scanning.

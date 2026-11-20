@@ -276,6 +276,7 @@ selected slot's frequency.
 - A message arriving while you are elsewhere shows on the hint line, puts an envelope in the
   status bar and plays a sound. The modem tone itself is muted.
 - Encrypted UV-K5 messages show as "(encrypted)".
+- Hold **A/B** for the message settings: speed and receipts.
 
 The receiver listens for messages on every screen except the Pager, which uses the modem for its
 own format, and on every channel except Rolling ones (they listen for the scrambler's burst).
@@ -287,7 +288,8 @@ tone on the FM transmitter (MCW), so any FM radio on the channel hears it. The c
 goes with it, so repeaters let it through.
 
 - **Speed:** 30 words per minute to start with, about a professional operator's speed: a dit is
-  40 ms. UP and DOWN change it from 5 to 40 WPM, until the radio is switched off.
+  40 ms. UP and DOWN change it from 5 to 40 WPM (so do **Morse speed** in menu 6 Data modes, and holding
+  **A/B**), until the radio is switched off.
 - **Timing:** standard (PARIS): a dah is three dits, one dit between the elements of a letter, three
   between letters, seven between words. The carrier comes up half a second before the first letter,
   for receivers' squelch and repeaters.
@@ -325,7 +327,8 @@ POCSAG at the menu's **Pager speed**.
   with UP. All digits (and space, `-`, `U`, `(`, `)`) are sent as a numeric page, anything else as
   alphanumeric. MENU with nothing typed sends a tone-only page.
 
-Pager listening runs only while this screen is open.
+Hold **A/B** for the pager settings: RIC, speed and invert. Pager listening runs only while this screen
+is open, and dual watch stays on the selected slot meanwhile.
 
 ## Boot splash
 

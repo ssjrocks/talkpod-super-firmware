@@ -50,7 +50,7 @@ One **unit** = `floor(1200 / WPM)` milliseconds (the PARIS standard: "PARIS " is
 | gap between letters | off | 3 units |
 | gap between words | off | 7 units |
 
-Speeds: 30 WPM to start with; the radio's UP / DOWN change it in steps of 5 from 5 to 40 WPM (the
+Speeds: 30 WPM to start with; the radio's UP / DOWN (or the menu's Morse speed, 1.34+) change it in steps of 5 from 5 to 40 WPM (the
 setting goes back to 30 at power-off).
 
 | WPM | unit (ms) | dit | dah | letter gap | word gap |
